@@ -1,0 +1,110 @@
+# VCPeer Book — Cal.com (cal.diy, MIT) community edition, branded for VCPeer.
+#
+# Local-only stack: Postgres + Cal.com web app + Mailpit (SMTP capture, local
+# verification only — production points EMAIL_SERVER_* at Scribase Mail).
+#
+# ARM64 note (read before you "docker compose up" on an Apple Silicon Mac or
+# an Oracle Ampere box): `calcom/cal.com:latest` on Docker Hub is amd64-only
+# (verified via `docker manifest inspect calcom/cal.com:latest` — single
+# platform manifest, architecture amd64). BUT Docker Hub also carries
+# per-release "-arm" tags built natively for arm64 — verified via the Docker
+# Hub tags API (`.../repositories/calcom/cal.com/tags/?ordering=last_updated`)
+# which lists `v6.2.0-arm` (architecture: arm64, pushed 2026-03-02) matching
+# `v6.2.0`/`latest` (architecture: amd64, same push date). We pin
+# `v6.2.0-arm` below: it is the same release as `latest`, runs natively (no
+# QEMU emulation, ~5x less CPU/RAM overhead than the amd64 image under
+# emulation), and at ~1.24GB compressed is actually what "latest" is too —
+# the ~8GB you see in `docker images` is the uncompressed on-disk size after
+# layer extraction, not a sign this tag is bloated or stale relative to
+# `latest`. Docker Hub has not published anything newer than v6.2.0 since
+# the calcom/cal.com -> calcom/cal.diy rename (2026-09-26); no image yet
+# exists under the new `cal.diy` name on Docker Hub or GHCR as of this
+# writing — re-check before every redeploy (see deploy/RUNBOOK.md "Upstream
+# update procedure").
+services:
+  postgres:
+    image: postgres:16-alpine
+    platform: linux/arm64
+    container_name: vcpeer-book-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-calcom}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set a password in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-calcom}
+    volumes:
+      - vcpeer-book-postgres-data:/var/lib/postgresql/data
+    networks:
+      - vcpeer-book
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-calcom} -d ${POSTGRES_DB:-calcom}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 768M
+        reservations:
+          memory: 256M
+
+  mailpit:
+    image: axllent/mailpit:latest
+    platform: linux/arm64
+    container_name: vcpeer-book-mailpit
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:8025:8025' # web UI — view captured mail at http://localhost:8025
+      - '127.0.0.1:1025:1025' # SMTP — local-only, no auth
+    networks:
+      - vcpeer-book
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8025/readyz']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+
+  calcom:
+    image: calcom/cal.com:v6.2.0-arm
+    platform: linux/arm64 # native arm64 build — see ARM64 note above
+    container_name: vcpeer-book-calcom
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-calcom}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-calcom}
+      DATABASE_DIRECT_URL: postgresql://${POSTGRES_USER:-calcom}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-calcom}
+    ports:
+      - '127.0.0.1:3000:3000'
+    networks:
+      - vcpeer-book
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3000/auth/login']
+      interval: 15s
+      timeout: 10s
+      retries: 15
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          memory: 512M
+
+networks:
+  vcpeer-book:
+    name: vcpeer-book
+
+volumes:
+  vcpeer-book-postgres-data:
+    name: vcpeer-book-postgres-data
