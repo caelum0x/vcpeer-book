@@ -6,9 +6,11 @@ the exact procedure for whoever deploys this later.
 
 Stack: Cal.com community edition (**cal.diy**, MIT, `github.com/calcom/cal.diy`
 — `calcom/cal.com` now redirects there) + Postgres, branded for VCPeer, with
-booked meetings carrying a `https://vcpeer.com/join/<room-slug>` VCPeer video
-room link as the event location. See `branding/README.md` for the full
-rationale on the branding and location-link approach, and the project root
+every booking getting its own unique VCPeer video room link
+(`https://vcpeer.com/join/<uuid>`, minted per-booking by Cal.com's built-in
+Jitsi conferencing app — not a shared static link; see `branding/README.md`
+"Video room integration" for the privacy-bug history and fix). See
+`branding/README.md` for the full branding rationale, and the project root
 `docker-compose.yml` / `.env.example` for the actual config.
 
 ## 0. Image choice — read this before you pull anything
@@ -98,11 +100,19 @@ Then open `http://localhost:3000/auth/setup` and:
 2. Settings → My Account → Appearance: set **Custom brand colors** to light
    `#2563EB` / dark `#4678F9`, and turn on **Disable Cal.com branding** (exact
    steps verified locally — see `branding/README.md`).
-3. For every event type you want bookable, set **Location → Link meeting**
-   and paste a VCPeer room URL (`https://vcpeer.com/join/<slug>`) — generate
-   a fresh random slug per event type, write it down, never reuse it
-   elsewhere. Verified end-to-end locally: the attendee's confirmation page
-   and the confirmation email both show this exact URL as "Where".
+3. Install and configure the **Jitsi Video** conferencing app (gives every
+   booking a unique room — do NOT use the static "Link meeting" location
+   type for this, see `branding/README.md` "v1 (superseded)" for why that
+   was a privacy bug):
+   - Settings → My Account → Conferencing → **Add** → install "Jitsi Video".
+   - Settings → Admin → Apps → Conferencing → Jitsi Video → edit (pencil) →
+     **Edit keys**: `jitsiHost = https://vcpeer.com/join`,
+     `jitsiPathPattern` left blank (defaults to `{uuid}`) → Save.
+   - For every event type you want bookable: Basics → Location → select
+     **Jitsi Video** → Save.
+   Verified end-to-end locally with two separate bookings of the same event
+   type: each got its own `https://vcpeer.com/join/<uuid>`, confirmed on
+   both the confirmation page and in the confirmation email.
 4. Settings → Admin → turn off public signups if `NEXT_PUBLIC_DISABLE_SIGNUP`
    in `.env` didn't already cover it (internal tool, not a public SaaS).
 
@@ -189,16 +199,22 @@ one-directional.
 4. Bump the tag in `docker-compose.yml`, `docker-compose pull`,
    `docker-compose up -d calcom`, watch logs for migration errors.
 5. Smoke-test: log in, open one event type, confirm its Location still shows
-   the VCPeer Link-meeting URL (upgrades should never touch booking data),
-   book a test slot, confirm the email still carries the room link.
+   **Jitsi Video** (not a reverted "Link meeting" — upgrades should never
+   touch booking/app-key data, but check anyway), confirm Settings → Admin →
+   Apps → Conferencing → Jitsi Video's keys still show `jitsiHost =
+   https://vcpeer.com/join`, then book two test slots and confirm the two
+   confirmation emails carry two *different* `vcpeer.com/join/<uuid>` links
+   (this is the privacy-bug regression check — see `branding/README.md`
+   "v1 (superseded)" for what it's guarding against).
 
 ## 8. Known follow-ups (not built here, honestly flagged)
 
-- **Per-booking unique VCPeer rooms**: current setup is one persistent room
-  per event type (see `branding/README.md` for why). If overlapping
-  concurrent bookings of the same event type become a real scenario, build a
-  proper Cal.com conferencing-app integration (`createMeeting()` hook) —
-  that requires forking `cal.diy` source, out of scope for this adoption.
+- **Per-booking unique VCPeer rooms**: DONE (2026-10-15 follow-up) — Cal.com's
+  built-in Jitsi conferencing app (`jitsiHost` app key pointed at
+  `https://vcpeer.com/join`) now mints a fresh `{uuid}` room per booking,
+  still zero source changes. See `branding/README.md` "v2 (current)" for the
+  full verification (two bookings, two different room links, both on the
+  confirmation page and in the Mailpit-captured emails).
 - **Cal.com wordmark in the internal dashboard nav** cannot be replaced via
   env/settings in community edition (requires either an Enterprise-tier
   custom-logo feature or a source fork) — see `branding/README.md`. Not

@@ -45,61 +45,99 @@ env change.
 
 ## Video room integration (the actual point of this adoption)
 
-Every booking needs its confirmation to carry a VCPeer video-call room link.
-Cal.com ships a built-in **"Link meeting"** location type (no app install,
-no custom code) that lets the event owner paste any URL as the meeting
-location. We use VCPeer's real room-join route
-(`app/src/server.js` → `app.get('/join/:roomId', ...)`, confirmed live in
-the `vcpeer` repo) as the pattern:
+Every booking needs its confirmation to carry a VCPeer video-call room link,
+and — this is the important part, fixed in the 2026-10-15 follow-up below —
+**a different room per booking**, not one shared room strangers could walk
+into.
 
+### v1 (superseded): static "Link meeting" — had a privacy bug
+
+The first pass used Cal.com's built-in **"Link meeting"** location type
+(paste any URL as the meeting location) pointed at one fixed URL per event
+type, e.g. `https://vcpeer.com/join/vcpeer-book-30min-9f2k`. **This was
+wrong**: every booking of that event type shared the exact same room, so two
+different attendees who booked two different time slots would land in the
+same VCPeer room if their links ever got reused or compared — a real privacy
+bug, not a cosmetic one. Superseded by the fix below; kept here only as the
+rejected option for the record.
+
+### v2 (current): Cal.com's built-in Jitsi conferencing app — per-booking unique room, still no fork
+
+Cal.com ships a real conferencing **app** (not just a location type) called
+**Jitsi Video** (`packages/app-store/jitsivideo`, MIT, part of the standard
+v6.2.0 app-store catalog — confirmed by reading
+`lib/VideoApiAdapter.ts` and `zod.ts` directly from the `calcom/cal.diy`
+source on GitHub). Its `createMeeting()` hook already generates a **fresh
+UUID per booking** and builds the URL as `${jitsiHost}/${meetingId}` — the
+exact per-booking-unique mechanism we needed, and it ships in the box, no
+forking required:
+
+```ts
+// packages/app-store/jitsivideo/lib/VideoApiAdapter.ts (upstream, unmodified)
+const meetingPattern = appKeys.jitsiPathPattern || "{uuid}";
+const hostUrl = appKeys.jitsiHost || "https://meet.jit.si/cal";
+const meetingID = meetingPattern.replaceAll("{uuid}", uuidv4())...;
+url: `${hostUrl}/${encodeURIComponent(meetingID)}`
 ```
-https://vcpeer.com/join/<room-slug>
-```
 
-**Chosen method:** set the event type's Location to **Link meeting** with a
-room URL like `https://vcpeer.com/join/vcpeer-book-30min-9f2k`. This is a
-**per-event-type, persistent room** (generate the slug once when you create
-the event type — e.g. `vcpeer-book-<event-slug>-<4-char-random>` — and never
-reuse it for anything else), not a fresh random room per individual booking.
+**Exact steps taken (all in-app, zero source changes):**
+1. Settings → My Account → Conferencing → **Add** → install "Jitsi Video"
+   (App Store listing at `/apps/jitsi`).
+2. Settings → Admin → Apps → Conferencing → **Jitsi Video → edit (pencil
+   icon) → Edit keys**:
+   - `jitsiHost` = `https://vcpeer.com/join`
+   - `jitsiPathPattern` = *(left blank → defaults to `{uuid}`)*
+   - Save → "Keys have been saved".
+3. Per event type: Basics → Location → select **Jitsi Video** from the
+   dropdown (it appears automatically once the app above is installed) →
+   Save.
 
-Why not per-booking dynamic rooms? Cal.com's only way to mint a brand-new
-meeting URL on every booking is a **conferencing "app"** (the mechanism Zoom/
-Google Meet/Daily.co use) with a `createMeeting()` handler that runs
-server-side — which does not exist as an env/config option; it requires
-writing and registering a new app package inside the Cal.com monorepo, i.e.
-exactly the "goes beyond env/theming" case we're avoiding for this pass. A
-webhook-based alternative (listen for `BOOKING_CREATED`, generate a room,
-`PATCH` the booking's location via the Cal.com API) was considered and
-rejected: the confirmation email is sent synchronously at booking time,
-before any webhook-driven patch could land, so the email would still show
-the old location — it doesn't actually solve "the confirmation email
-contains the room link."
+**Result:** every booking's location becomes
+`https://vcpeer.com/join/<uuid-v4>` — a brand-new random room per booking,
+generated server-side by Cal.com itself at booking time (so it's already
+correct in the very first confirmation email, no webhook race).
 
-**What you get with the static Link-meeting approach** (verified live, see
-`deploy/RUNBOOK.md` and the task screenshots):
-- The attendee's confirmation page shows `Where: Link ↗` linking to the
-  VCPeer room.
-- The confirmation email (sent via SMTP, captured locally by Mailpit) shows
-  `Where → Link → Meeting URL: https://vcpeer.com/join/vcpeer-book-30min-9f2k`.
-- The organizer and attendee both land in the **same** VCPeer room for every
-  booking of that event type — correct behavior for "my recurring 30-minute
-  slot", same as how a Calendly/Cal.com user normally reuses one Zoom
-  Personal Meeting Room across all their bookings.
+**Verified live** (2026-10-15 follow-up, two independent bookings of the
+same "30 min meeting" event type, from two separate browser contexts):
 
-**Known limitation:** two different attendees booking two different time
-slots of the *same* event type would, if both showed up, land in the same
-VCPeer room. For a single-organizer scheduling tool where slots don't
-overlap (that's the whole point of availability-based booking) this is a
-non-issue in practice. If VCPeer Book ever needs guaranteed-unique rooms per
-booking (e.g. group/webinar event types with overlapping concurrent
-attendees), the real fix is the conferencing-app path above — tracked as a
-follow-up in `deploy/RUNBOOK.md`, not built here.
+| Booking | Attendee | Room link (confirmation page + email, identical) |
+|---|---|---|
+| 1 | guest1@example.com | `https://vcpeer.com/join/76c797ff-dbfa-4622-9b0d-cfb1ca2822f3` |
+| 2 | guest2@example.com | `https://vcpeer.com/join/c446f8ac-5ea7-42f3-a869-e7e3896c4fab` |
+| 3 (mobile, 390×844) | guest3@example.com | `https://vcpeer.com/join/9e1d53ef-1716-46c7-a284-ca0b0a79fdce` |
 
-**Room URL is hidden until after booking** by design: the "Display on
-booking page" checkbox under the Meeting link field is left unchecked, so
-the VCPeer room URL is not exposed to anyone just browsing the public
-scheduling page — only to the two parties who actually have a confirmed
-booking (same privacy model as Cal Video's own default behavior).
+Three bookings, three different rooms — confirmed both on the Cal.com
+confirmation page (`Where: Jitsi Video ↗`, href `vcpeer.com/join/<uuid>`)
+and in the Mailpit-captured confirmation emails (grepped the raw HTML for
+each booking's distinct UUID).
+
+### Does VCPeer's `/join/:roomId` actually accept a UUID slug?
+
+Yes, verified directly against the live `vcpeer` source, not just read —
+ran `Validate.isValidRoomName()` from `vcpeer/app/src/validate.js` in Node
+against both UUIDs above: both return `true`. Reading the function confirms
+why: it only rejects XSS-unsafe content (via DOMPurify) and path-traversal
+sequences (`../`, etc.) — a lowercase-hex-and-dashes UUID trips neither
+check, and Express's `app.get('/join/:roomId', ...)` route has no additional
+character allowlist. **No change was needed in the `vcpeer` repo.** If a
+future Cal.com version ever changes the default `jitsiPathPattern` to emit
+characters VCPeer's validator does reject (e.g. a literal `/` or `..`), the
+smallest fix would be in `vcpeer/app/src/validate.js`'s `hasPathTraversal`
+allowlist, not in Cal.com — documented here so nobody goes looking for it in
+the wrong repo.
+
+### Why this is still "no fork"
+
+`jitsiHost`/`jitsiPathPattern` are **app keys** — rows in Cal.com's own
+`App` table, edited through its existing admin UI
+(`/settings/admin/apps/conferencing`). This is the same category of change
+as the brand-color settings above: in-app configuration, zero lines of
+Cal.com source touched, zero rebuild.
+
+**Room URL is hidden until after booking**, same as v1: the public
+scheduling page shows "Jitsi Video" as the location but not the actual URL;
+only the two parties with a confirmed booking see the real
+`vcpeer.com/join/<uuid>` link, on the confirmation page and in their email.
 
 ## Logo asset used
 
