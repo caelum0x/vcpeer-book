@@ -101,6 +101,43 @@ services:
         reservations:
           memory: 512M
 
+  # cal.diy's bookingReminder / changeTimeZone / webhookTriggers (and the
+  # legacy workflows/scheduleEmailReminders) endpoints are gated behind
+  # CRON_API_KEY and expect an EXTERNAL periodic caller — upstream's own
+  # hosted Cal.com triggers them via its own GitHub Actions cron workflows
+  # (.github/workflows/cron-bookingReminder.yml etc in calcom/cal.diy), not
+  # anything baked into the app container. Before this service existed,
+  # CRON_API_KEY was generated and sitting in .env unused: nothing ever
+  # called these endpoints, so pending-booking reminder emails, timezone
+  # migrations, and webhook delivery retries would silently never fire.
+  # This container replicates upstream's own cron cadence locally.
+  calcom-cron:
+    image: alpine:3.20
+    container_name: vcpeer-book-calcom-cron
+    restart: unless-stopped
+    networks:
+      - vcpeer-book
+    depends_on:
+      calcom:
+        condition: service_healthy
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - |
+        set -e
+        apk add --no-cache curl >/dev/null 2>&1
+        cat > /etc/crontabs/root <<'EOF'
+        */15 * * * * curl -fsS -X POST -H "content-type: application/json" -H "authorization: ${CRON_API_KEY:?set in .env}" http://calcom:3000/api/cron/bookingReminder >>/proc/1/fd/1 2>&1
+        */15 * * * * curl -fsS -X POST -H "content-type: application/json" -H "authorization: ${CRON_API_KEY:?set in .env}" http://calcom:3000/api/cron/workflows/scheduleEmailReminders >>/proc/1/fd/1 2>&1
+        0 * * * * curl -fsS -X POST -H "content-type: application/json" -H "authorization: ${CRON_API_KEY:?set in .env}" http://calcom:3000/api/cron/changeTimeZone >>/proc/1/fd/1 2>&1
+        * * * * * curl -fsS -X POST -H "content-type: application/json" -H "authorization: ${CRON_API_KEY:?set in .env}" http://calcom:3000/api/cron/webhookTriggers >>/proc/1/fd/1 2>&1
+        EOF
+        exec crond -f -l 2
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 64M
+
 networks:
   vcpeer-book:
     name: vcpeer-book

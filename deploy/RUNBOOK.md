@@ -207,7 +207,36 @@ one-directional.
    (this is the privacy-bug regression check — see `branding/README.md`
    "v1 (superseded)" for what it's guarding against).
 
-## 8. Known follow-ups (not built here, honestly flagged)
+## 8. Cron triggers — required, not optional
+
+cal.diy gates several background jobs behind `CRON_API_KEY` and expects an
+**external** periodic caller — on upstream's own hosted Cal.com this is a
+GitHub Actions cron workflow per endpoint
+(`calcom/cal.diy/.github/workflows/cron-bookingReminder.yml` etc), **not**
+anything the app container runs on its own. This repo generates
+`CRON_API_KEY` in `.env` but, until the `calcom-cron` service was added to
+`docker-compose.yml`, nothing ever called those endpoints — pending-booking
+reminder emails (`/api/cron/bookingReminder`, reminds the organizer at
+48h/24h/3h if a booking is still awaiting confirmation), timezone-change
+processing (`/api/cron/changeTimeZone`), and webhook delivery retries
+(`/api/cron/webhookTriggers`) would have silently never fired in production.
+
+The `calcom-cron` service (`alpine` + `curl` + `crond`) replicates upstream's
+own cadence: `*/15 * * * *` for `bookingReminder` and
+`workflows/scheduleEmailReminders`, hourly for `changeTimeZone`, every
+minute for `webhookTriggers`. It starts automatically with
+`docker-compose up -d` (no extra step), but **after deploy, tail its logs
+once** to confirm the curls are returning 200s, not 401s:
+
+```bash
+docker-compose logs -f calcom-cron
+```
+
+A 401 there means `CRON_API_KEY` in `.env` doesn't match what the `calcom`
+container has loaded — redeploy `calcom-cron` after fixing `.env`
+(`docker-compose up -d calcom-cron`).
+
+## 9. Known follow-ups (not built here, honestly flagged)
 
 - **Per-booking unique VCPeer rooms**: DONE (2026-10-15 follow-up) — Cal.com's
   built-in Jitsi conferencing app (`jitsiHost` app key pointed at
