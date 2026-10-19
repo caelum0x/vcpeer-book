@@ -251,6 +251,11 @@ container has loaded — redeploy `calcom-cron` after fixing `.env`
 - **SPF/DKIM for `bookings@vcpeer.com` via Scribase Mail** must be verified
   before go-live or confirmation emails will land in spam — this is a
   Scribase Mail Studio domain-verification step, not a Cal.com config step.
-- Add VCPeer Book's booking link as a "Schedule a call" CTA on the main
-  `vcpeer.com` MiroTalk call rooms, per
-  `plans/OSS-ADOPTION-2026-10-15.md`'s original rationale for this adoption.
+- **VCPeer Book's booking link as a CTA on the main `vcpeer.com` app**: DONE
+  (confirmed 2026-10-19 by reading the live `vcpeer` source, not just
+  planned) — `https://book.vcpeer.com/admin/30min` is already linked from
+  the nav ("Book") on `launchboard.html`, `notify.html`, `send.html`, and
+  `landing.html`, from an "Open Book" CTA on `landing.html`, from a
+  dedicated `public/views/seo/free-scheduling-link.html` SEO landing page,
+  and `public/js/client.js` opens it pre-filled with the current room's
+  context from inside an active call. No further cross-repo wiring needed.
