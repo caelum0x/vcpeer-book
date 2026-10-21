@@ -139,6 +139,37 @@ scheduling page shows "Jitsi Video" as the location but not the actual URL;
 only the two parties with a confirmed booking see the real
 `vcpeer.com/join/<uuid>` link, on the confirmation page and in their email.
 
+## Event type titles/descriptions (distribution, 2026-10-21)
+
+Both public event types (`admin/15min`, `admin/30min`) still had Cal.com's
+seed defaults — `"15 min meeting"` / `"30 min meeting"`, empty description —
+live in production a week after launch. Found while verifying SEO metadata
+on the live page (`og:title` was literally `" 30 min meeting | VCPeer
+Admin"`, no description at all). Generic seed copy on a public, SEO-indexed,
+socially-shared booking link is a real distribution gap (nothing in the
+title/share card says what VCPeer is or why to book), so this was fixed:
+
+| Slug | Old title | New title | New description |
+|---|---|---|---|
+| `15min` | 15 min meeting | 15-Minute VCPeer Call | "A quick 15-minute video call with the VCPeer team — ask questions or get set up fast. Joins a private VCPeer video room, no account needed." |
+| `30min` | 30 min meeting | 30-Minute VCPeer Call | "Book a free 30-minute video call with the VCPeer team for a live walkthrough of VCPeer video calls, screen sharing, file transfer, and this scheduling tool. Joins a private VCPeer video room, no account needed." |
+
+Applied via a direct `UPDATE "EventType" SET title = ..., description = ...`
+against the production Postgres container (same data the admin-UI "Event
+Type → Basics" form would write — no source/schema change), **after** a
+fresh `pg_dump -Fc` backup (see `deploy/RUNBOOK.md` section 5). Verified
+live: both pages' `<title>`/`og:title` now show the new copy, and the
+description renders in the page body for human visitors. One honest gap
+found while verifying: cal.diy's `<meta name="description">` and
+`og:description` always mirror the event title, not the `description`
+field — so the longer copy above only reaches readers on the page itself
+and isn't in the raw meta/share-card text. That's upstream behavior, not a
+misconfiguration here.
+
+The third, pre-existing event type (`secret`, "Secret meeting") is
+Cal.com's own seeded demo type and is already `hidden = true` — not public,
+left as-is.
+
 ## Logo asset used
 
 `branding/vcpeer-logo.svg` is a copy of `vcpeer/public/images/logo.svg` (two
