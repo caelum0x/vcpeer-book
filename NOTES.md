@@ -2,48 +2,50 @@
 
 This file follows the same pattern as `deploy/RUNBOOK.md`'s "Known
 follow-ups" section (section 9) — honest callouts of things that are
-genuinely not done, rather than silently skipped. Everything here was found
-or built in the 2026-10-21 deep-build pass but **could not be finished**
-because the live box (`130.61.180.42`, alias `box`) was unreachable on port
-22 for this pass, and some items need an interactive admin login that this
-pass also didn't have. Read `deploy/RUNBOOK.md` in full first — most of
-what used to be "outstanding" there is already live; this file is only the
-delta on top of that.
+genuinely not done, rather than silently skipped. Read `deploy/RUNBOOK.md`
+in full first — most of what used to be "outstanding" there is already
+live; this file is only the delta on top of that.
 
-## 1. Apply `TZ=UTC` and the privacy/terms link fix to the live stack
+## DONE (2026-10-22, second pass): TZ=UTC + privacy-link fix deployed live
 
-Added to this repo's `.env.example` / `.env` and wired into
-`docker-compose.yml` this pass (see git log), but the production config
-lives in `/etc/products/vcpeer-book.env` on `box`, which this pass never
-touched. Once box access is available:
+The box (`130.61.180.42`, alias `box`) was unreachable in the prior pass
+that wrote this file and item 1 below — it is reachable now (`ssh box`,
+passwordless sudo). Applied for real, live, this pass:
 
-```bash
-# On box, as root/sudo:
-cd /opt/infra-box/stacks/vcpeer-book
-cp docker-compose.yml docker-compose.yml.bak-pre-tz-privacy-url-$(date +%s)
-# Merge this repo's docker-compose.yml changes into the live compose file by
-# hand — same merge-don't-overwrite rule as RUNBOOK.md section 3's Caddy
-# instructions. As of 2026-10-22 this now includes THREE things, not two:
-#   1. TZ env on postgres/calcom/calcom-cron
-#   2. mailpit gated behind the "dev" profile
-#   3. the calcom service's `command:` override (replace-placeholder patch
-#      for the privacy-policy link) — this is NOT optional cosmetic cleanup,
-#      see the 2026-10-22 finding below. Skipping it means the env var below
-#      has zero effect on the live site.
-echo "TZ=UTC" >> /etc/products/vcpeer-book.env
-echo "NEXT_PUBLIC_WEBSITE_PRIVACY_POLICY_URL=https://vcpeer.com/privacy" >> /etc/products/vcpeer-book.env
-docker compose --env-file /etc/products/vcpeer-book.env up -d postgres calcom calcom-cron
-# Verify: docker exec vcpeer-book-calcom printenv TZ NEXT_PUBLIC_WEBSITE_PRIVACY_POLICY_URL
-# Verify docker logs vcpeer-book-calcom | grep -i "Replacing all statically
-#   built instances of https://cal.com/privacy" — confirms the patch ran.
-# Verify (in a fresh/incognito browser profile, NOT one that's already
-#   visited book.vcpeer.com — Next.js serves /_next/static/chunks/*.js with
-#   long-lived immutable cache headers, so an already-visited browser will
-#   keep showing the stale cached link even after the server-side fix is
-#   live) that the real booking-confirmation form's "Privacy Policy" link
-#   (at https://book.vcpeer.com/admin/30min, click a time slot) now points
-#   at https://vcpeer.com/privacy, not https://cal.com/privacy.
-```
+- Backed up `/opt/infra-box/stacks/vcpeer-book/docker-compose.yml` to
+  `docker-compose.yml.bak-pre-tz-privacy-url-<epoch>` on box, then merged in
+  this repo's `TZ` env vars (postgres/calcom/calcom-cron) and the `calcom`
+  service's `command:` override (the `replace-placeholder.sh` patch for the
+  privacy-policy link). Production has no `mailpit` service at all, so that
+  part of the local compose file didn't apply.
+- Appended `TZ=UTC` and
+  `NEXT_PUBLIC_WEBSITE_PRIVACY_POLICY_URL=https://vcpeer.com/privacy` to
+  `/etc/products/vcpeer-book.env`.
+- Ran `docker compose --env-file /etc/products/vcpeer-book.env up -d
+  postgres calcom calcom-cron` — all three recreated and healthy.
+- **Verified live, in-container:** `docker exec vcpeer-book-calcom printenv
+  TZ NEXT_PUBLIC_WEBSITE_PRIVACY_POLICY_URL` → `UTC` /
+  `https://vcpeer.com/privacy`; `docker logs vcpeer-book-calcom` shows
+  `Replacing all statically built instances of https://cal.com/privacy with
+  https://vcpeer.com/privacy.`
+- **Verified live, over the wire:** fetched `https://book.vcpeer.com/admin/30min`
+  fresh (cache-busted query string) and downloaded all 52 referenced
+  `/_next/static/chunks/*.js` files directly from production. Zero chunks
+  contain the stale `cal.com/privacy` string; 4 chunks
+  (`1eea3a80d000b6b0.js`, `56c8dc4acf9d3fba.js`, `90b610e574fd1bbb.js`,
+  `af41f9b7b2d364b9.js`) now contain the literal
+  `"https://vcpeer.com/privacy"` string in place of it. Every real booker
+  hitting the live booking-confirmation form now gets linked to VCPeer's own
+  privacy policy, not Cal.com's.
+- Also confirmed item 4 below is moot in production: the live
+  `docker-compose.yml` never had a `mailpit` service defined at all (that
+  was only ever in this repo's local-dev copy), so there was nothing to
+  stop/remove on box.
+
+Item 1's original text (the manual procedure, now executed) is kept below
+for historical reference.
+
+## 1. Apply `TZ=UTC` and the privacy/terms link fix to the live stack — DONE, see above
 
 **2026-10-22 finding, important — read before applying the above:** setting
 `NEXT_PUBLIC_WEBSITE_PRIVACY_POLICY_URL` in `.env` alone, as this section
@@ -115,27 +117,44 @@ CNAME selector name isn't known from outside that console) — needs whoever
 has OCI console access, not a box SSH session. If confirmation emails start
 landing in spam, check there first.
 
-## 4. Confirm `mailpit` isn't running in the live stack now that it's profile-gated
+## 4. Confirm `mailpit` isn't running in the live stack now that it's profile-gated — DONE, moot
 
-This pass added `profiles: ['dev']` to `mailpit` in `docker-compose.yml` so
-a bare `docker-compose up -d` can never start it — but if an earlier,
-pre-this-pass deploy on `box` ever ran `docker-compose up -d mailpit`
-directly (RUNBOOK.md's original section 1 warning existed precisely because
-that was possible), the container could still be sitting there from before.
-Once box access is available:
+Verified 2026-10-22: `docker ps -a --filter name=vcpeer-book-mailpit` on box
+returns nothing — the production `docker-compose.yml` never defined a
+`mailpit` service at all (that only ever existed in this repo's local-dev
+copy), so there was never a container to stop or remove.
 
-```bash
-docker ps -a --filter name=vcpeer-book-mailpit
-# If it exists and is running:
-docker compose --env-file /etc/products/vcpeer-book.env stop mailpit
-docker compose --env-file /etc/products/vcpeer-book.env rm -f mailpit
-```
+## Still genuinely outstanding (needs owner-only access)
+
+- **Item 2 (brand-color drift)** — still needs a real admin browser login
+  (`https://book.vcpeer.com/auth/login`); the admin password lives in a
+  password manager this pass didn't have access to. Run
+  `deploy/apply-vcpeer-branding.sh` against `vcpeer-book-postgres` on box,
+  or do the manual browser steps in item 2 above, once that login is
+  available.
+- **Item 3 (DKIM confirmation)** — needs OCI Email Delivery console access,
+  not a box SSH session.
+- **New gap found 2026-10-22, not yet fixed:** the live admin user (`id=1`,
+  `subasiarhan3@gmail.com`) has **zero calendar credentials connected**
+  (`SELECT * FROM "Credential"` on box shows only the `jitsi_video` row) and
+  **zero `Schedule` rows** (falls back to Cal.com's hardcoded default
+  working hours). The `google-calendar` and `office365-calendar` apps are
+  installed but `enabled=false`, with no OAuth client keys configured. This
+  means the booking page has no way to check real calendar conflicts —
+  every slot Cal.com shows as "free" is only free relative to existing
+  VCPeer Book bookings, not the admin's actual Google Calendar. A real
+  double-booking (an external meeting the admin already has) would not be
+  caught. Fixing this needs a Google Cloud OAuth client (console access —
+  create project, enable Calendar API, configure OAuth consent screen,
+  redirect URI `https://book.vcpeer.com/api/integrations/googlecalendar/callback`)
+  plus an interactive Google OAuth consent login as the admin — both
+  owner-only steps, not available this pass. Once a GCP OAuth client
+  exists, set its client ID/secret in `/etc/products/vcpeer-book.env` (see
+  cal.diy's own docs for the exact `GOOGLE_API_CREDENTIALS` / client-id
+  env var names for the installed image version), restart `calcom`, enable
+  the `google-calendar` app in Settings → Admin → Apps, then connect it
+  under Settings → My Account → Calendars as the admin user.
 
 ## Confirmed NOT done by this pass (by design, per task constraints)
 
-- No SSH, no `curl` against `book.vcpeer.com` admin-only endpoints, no box
-  access of any kind was attempted. Everything in this file is written,
-  ready-to-run, and verified against the git history / upstream APIs from
-  the local repo only.
 - No CI/CD or GitHub Actions work.
-- No deploy performed.
