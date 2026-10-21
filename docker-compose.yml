@@ -93,6 +93,42 @@ services:
       TZ: ${TZ:-UTC}
     ports:
       - '127.0.0.1:3000:3000'
+    # Overrides the image's default CMD (`/calcom/scripts/start.sh`) to first
+    # patch two statically-built-in Cal.com URLs using Cal.com's OWN
+    # scripts/replace-placeholder.sh (ships inside this image; upstream's own
+    # start.sh already calls it once, for NEXT_PUBLIC_WEBAPP_URL — see that
+    # file at /calcom/scripts/start.sh in the running container). This is
+    # needed because NEXT_PUBLIC_* env vars are inlined into the compiled
+    # `.next` output at Cal.com's own Docker Hub build time, not read at
+    # container-start time for every other NEXT_PUBLIC_* var besides the one
+    # upstream already patches this way — confirmed locally: setting
+    # NEXT_PUBLIC_WEBSITE_PRIVACY_POLICY_URL via env_file alone has ZERO
+    # effect on the rendered page; every real booker filling out the booking
+    # form was being sent to Cal.com's OWN https://cal.com/privacy and
+    # https://cal.com/terms, not VCPeer's, regardless of this repo's .env.
+    # See branding/README.md "Privacy/Terms links are hardcoded, not
+    # runtime-configurable" for the full repro. Falls through to the
+    # unmodified upstream `scripts/start.sh` (migrations, app-store seed,
+    # `yarn start`) once patched — no Cal.com source is forked or edited,
+    # only two already-compiled literal strings are swapped using the
+    # vendor's own tool for exactly this job. NEXT_PUBLIC_WEBSITE_TERMS_URL is
+    # deliberately left unset in .env (no ToS page on vcpeer.com yet — see
+    # .env.example) so that branch is a no-op by design, not a bug: the
+    # booking page keeps linking to Cal.com's real terms page rather than a
+    # broken empty href.
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        cd /calcom
+        if [ -n "$$NEXT_PUBLIC_WEBSITE_PRIVACY_POLICY_URL" ]; then
+          scripts/replace-placeholder.sh "https://cal.com/privacy" "$$NEXT_PUBLIC_WEBSITE_PRIVACY_POLICY_URL"
+        fi
+        if [ -n "$$NEXT_PUBLIC_WEBSITE_TERMS_URL" ]; then
+          scripts/replace-placeholder.sh "https://cal.com/terms" "$$NEXT_PUBLIC_WEBSITE_TERMS_URL"
+        fi
+        exec scripts/start.sh
     networks:
       - vcpeer-book
     depends_on:

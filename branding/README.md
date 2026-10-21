@@ -2,9 +2,12 @@
 
 Cal.com / **cal.diy** (MIT, github.com/calcom/cal.diy — `calcom/cal.com` now
 redirects here) self-hosted, re-skinned as VCPeer's booking product. Every
-change below is env-var or in-app-settings only — **no source was forked or
-edited**, per the adoption rule (only clone source if branding needs go
-beyond env/theming, which it didn't here).
+change below is env-var, in-app-settings, or a compiled-output string patch
+run by the vendor's own tooling at container start (see "Privacy/Terms links
+are hardcoded, not runtime-configurable" below for the one case that needed
+that) — **no Cal.com source is forked or edited**, per the adoption rule
+(only clone source if branding needs go beyond env/theming, which it hasn't
+here).
 
 ## What's branded, and how
 
@@ -12,9 +15,92 @@ beyond env/theming, which it didn't here).
 |---|---|---|
 | App name shown in page titles, emails, support links | `NEXT_PUBLIC_APP_NAME=VCPeer Book`, `NEXT_PUBLIC_COMPANY_NAME=VCPeer`, `NEXT_PUBLIC_SUPPORT_MAIL_ADDRESS=support@vcpeer.com` | `.env` |
 | Outbound email From name/address | `EMAIL_FROM=bookings@vcpeer.com`, `EMAIL_FROM_NAME=VCPeer` | `.env` |
-| Brand accent color on the public booking page (buttons, selected date) | Settings → My Account → Appearance → **Custom brand colors**: light `#2563EB`, dark `#4678F9` (set 2026-10-15, live today — see drift note directly below for what this should change to) | In-app setting, stored in the `users` table — survives container restarts because it's in Postgres, not in the image |
-| "Powered by Cal.com" footer on public booking pages | Settings → My Account → Appearance → **Disable Cal.com branding** → ON | Same in-app setting |
+| Brand accent color on the public booking page (buttons, selected date) | Settings → My Account → Appearance → **Custom brand colors**: light `#4678F9`, dark `#4678F9` — matches the single current `vcpeer` brand token (see drift note below) | In-app setting, stored in the `users` table — survives container restarts because it's in Postgres, not in the image. **Reproducible via `deploy/apply-vcpeer-branding.sql`**, see "Reproducible branding seed" below. |
+| "Powered by Cal.com" footer on public booking pages | Settings → My Account → Appearance → **Disable Cal.com branding** → ON | Same in-app setting; also reproducible via the seed script |
+| Privacy policy / Terms of service links on the public booking form | `docker-compose.yml`'s `calcom` service `command:` (patches the compiled `.next` output at container start) — **env vars alone do NOT work**, see "Privacy/Terms links are hardcoded, not runtime-configurable" below | `docker-compose.yml` + `.env` |
 | Signups | `NEXT_PUBLIC_DISABLE_SIGNUP=true` in production (this is an internal team booking tool, not a public multi-tenant SaaS) | `.env` |
+
+## Reproducible branding seed (2026-10-22 follow-up)
+
+Everything in the table above that lives in Postgres (brand colors,
+"Disable Cal.com branding", the Jitsi Video app install + per-event-type
+location, the 15min/30min title/description copy) was, until this pass, only
+ever set by hand once — through the browser or a one-off `psql` command —
+with nothing in git able to reproduce it. A fresh install, a
+disaster-recovery restore onto an empty DB, or a second/staging environment
+would all silently regress to stock, unbranded Cal.com defaults with no
+signal anywhere that something was missing.
+
+`deploy/apply-vcpeer-branding.sql` (and its wrapper,
+`deploy/apply-vcpeer-branding.sh`, which adds container/precondition checks
+and a plain-English verification summary) now applies all of that in one
+idempotent pass: `deploy/apply-vcpeer-branding.sh`. Run it once after the
+one-time `/auth/setup` admin wizard (or any time later to re-assert the
+correct config). Verified locally end-to-end: perturbed every value back to
+Cal.com's stock defaults (unhid branding, wrong colors, deleted the Jitsi
+credential, reset event-type titles/locations), ran the script, confirmed
+every value was restored, then ran it again to confirm it's a true no-op the
+second time (no errors, no duplicate rows, same end state) — see the script's
+own header for the exact mechanism per field.
+
+## Privacy/Terms links are hardcoded, not runtime-configurable (found 2026-10-22)
+
+`.env.example`/`.env` have carried
+`NEXT_PUBLIC_WEBSITE_PRIVACY_POLICY_URL=https://vcpeer.com/privacy` since the
+2026-10-21 pass, on the assumption that setting it would make the public
+booking form's "Privacy Policy" link point at VCPeer's own page. **This does
+not work** — verified by reproducing it locally, not just reading the code:
+
+- The real booker-facing booking-confirmation form (`/<username>/<slug>`,
+  right before the "Confirm" button) renders "Terms" and "Privacy Policy"
+  links. Before this pass's fix, both resolved to **`https://cal.com/terms`**
+  and **`https://cal.com/privacy`** — Cal.com's own legal pages, not VCPeer's
+  — even with `NEXT_PUBLIC_WEBSITE_PRIVACY_POLICY_URL` correctly set and
+  confirmed present inside the running container (`docker exec
+  vcpeer-book-calcom printenv` showed the right value).
+- Why: `packages/lib/constants.ts` in `calcom/cal.diy` computes
+  `WEBSITE_PRIVACY_POLICY_URL = process.env.NEXT_PUBLIC_WEBSITE_PRIVACY_POLICY_URL
+  || "https://cal.com/privacy"` — and Next.js inlines every
+  `NEXT_PUBLIC_*` reference into the compiled `.next` output **at the image's
+  own build time** (Cal.com's CI, when they built the `v6.2.0-arm` Docker Hub
+  image), not read fresh from the container's environment at request time.
+  Confirmed directly: `grep -rl 'cal.com/privacy'
+  /calcom/apps/web/.next --include='*.js'` inside the running container
+  matched 10 compiled chunk files (both server SSR chunks and client static
+  chunks) containing the literal fallback string — this is dead config, not
+  a live one, for any self-hoster pulling the prebuilt image.
+- The fix: Cal.com's own `scripts/start.sh` (ships inside the image) already
+  solves exactly this class of problem for one other var,
+  `NEXT_PUBLIC_WEBAPP_URL`, by calling its own
+  `scripts/replace-placeholder.sh FROM TO` — a vendor-provided tool that
+  `sed`-patches every matching compiled `.next`/`public` file in place at
+  container start, before the server starts serving. `docker-compose.yml`'s
+  `calcom` service now overrides `command:` to call that exact same
+  vendor script for `https://cal.com/privacy` →
+  `$NEXT_PUBLIC_WEBSITE_PRIVACY_POLICY_URL`, then falls through to the
+  unmodified `scripts/start.sh` for everything else (migrations, app-store
+  seed, `yarn start`). **No Cal.com source is forked or edited** — only two
+  already-compiled literal strings get swapped, using the vendor's own
+  tool, the same way upstream already uses it for `NEXT_PUBLIC_WEBAPP_URL`.
+- `NEXT_PUBLIC_WEBSITE_TERMS_URL` is deliberately left empty in `.env`
+  (no terms-of-service page exists on `vcpeer.com` yet — same reasoning
+  `.env.example` already documents) — the command is written to skip that
+  replacement entirely when the var is empty, so the Terms link keeps
+  pointing at Cal.com's real terms page rather than an empty/broken href.
+  Fill in `NEXT_PUBLIC_WEBSITE_TERMS_URL` once `vcpeer.com/terms` exists and
+  this starts working for Terms too, with zero further code changes.
+- Verified end-to-end locally: perturbed the running container back to a
+  fresh pull (no patch applied), confirmed the booking form showed
+  `cal.com/privacy`; applied the `docker-compose.yml` change, recreated the
+  container, confirmed (via a from-scratch browser profile — not just a
+  cache-bypassed `fetch`, since Next.js serves `/_next/static/chunks/*.js`
+  with long-lived immutable cache headers and a browser that had visited the
+  unpatched page earlier in the same session will keep serving its own
+  cached copy of the file even after the server-side content changes) that
+  "Privacy Policy" now resolves to `https://vcpeer.com/privacy`. Also
+  confirmed restart-idempotent: restarting the container re-runs the patch
+  against already-patched files harmlessly (no matches left to replace, no
+  error) and the container still reaches `healthy`.
 
 ## Brand color drift vs. `vcpeer` — re-checked 2026-10-21
 
@@ -42,10 +128,27 @@ shade off from what the rest of the VCPeer suite now renders
 (`#4678F9`) in light mode; dark mode already matches. Correct fix (in-app
 only, same as the original setup — no source change): Settings → My
 Account → Appearance → Custom brand colors → set **both** light and dark to
-`#4678F9`, matching the single current token. Not applied in this pass —
-requires an interactive admin login to `https://book.vcpeer.com/auth/login`
-with real credentials, which this pass didn't have; see the main repo's
-`NOTES.md` and `deploy/RUNBOOK.md` section 9.
+`#4678F9`, matching the single current token. **Still not applied in
+production** — requires an interactive admin login to
+`https://book.vcpeer.com/auth/login` with real credentials, which this pass
+didn't have either; see the main repo's `NOTES.md` and
+`deploy/RUNBOOK.md` section 9. Applied and verified **locally** this pass
+(2026-10-22) via `deploy/apply-vcpeer-branding.sql` — same value, same
+mechanism, reproducible for the live box once access is back.
+
+One thing to know before applying this live: Cal.com's own appearance
+settings UI flags `#4678F9` as **failing its button-contrast check** in
+light mode ("Light theme color doesn't pass contrast check. We recommend you
+change this colour so your buttons will be more visible.") — confirmed by
+setting it through the real local admin UI. Rough math backs this up:
+`#4678F9` against white is ~3.98:1, under the ~4.5:1 WCAG AA threshold
+Cal.com's checker wants for normal text (it clears the 3:1 AA threshold for
+large text/UI components, just not the stricter one). This is advisory
+only — the save still succeeds, confirmed — and is not a reason to deviate:
+`#4678F9` is the one brand blue the rest of the VCPeer suite renders
+everywhere today, so matching it exactly here is still the right call.
+Flagging it so whoever applies this on the live box doesn't mistake the
+warning for a failed save.
 
 ## What's NOT branded (known gap, honest callout)
 

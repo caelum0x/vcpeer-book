@@ -136,9 +136,25 @@ Then open `http://localhost:3000/auth/setup` and:
 1. Create the admin user (real VCPeer team email, a real strong password —
    this task's local admin password tripped Cal.com's own "add 2FA or use a
    15+ char password" nag; use a password manager and set a real one).
+2. **Fast path (recommended, added 2026-10-22):** run
+   `deploy/apply-vcpeer-branding.sh` right after creating the admin user. It
+   idempotently applies steps 2-3 below (brand colors, disable-branding,
+   Jitsi app install + keys + event-type locations, and the 15min/30min
+   title/description copy) in one pass via direct SQL against the running
+   Postgres container — verified locally end-to-end (perturb every value
+   back to stock Cal.com defaults, run the script, confirm full recovery,
+   run again to confirm it's a safe no-op). See
+   `branding/README.md` "Reproducible branding seed" and the script's own
+   header for exactly what it does and why. Steps 2-3 below are the manual,
+   browser-driven equivalent — keep them for reference / if you want to
+   verify or tweak one setting at a time, not because the script is
+   incomplete.
 2. Settings → My Account → Appearance: set **Custom brand colors** to light
-   `#2563EB` / dark `#4678F9`, and turn on **Disable Cal.com branding** (exact
-   steps verified locally — see `branding/README.md`).
+   `#4678F9` / dark `#4678F9` (both — see `branding/README.md` "Brand color
+   drift vs. vcpeer" for why both are the same value now, and the
+   contrast-checker warning this exact value triggers in Cal.com's own UI,
+   which is expected and safe to ignore), and turn on **Disable Cal.com
+   branding** (exact steps verified locally — see `branding/README.md`).
 3. Install and configure the **Jitsi Video** conferencing app (gives every
    booking a unique room — do NOT use the static "Link meeting" location
    type for this, see `branding/README.md` "v1 (superseded)" for why that
@@ -154,6 +170,16 @@ Then open `http://localhost:3000/auth/setup` and:
    both the confirmation page and in the confirmation email.
 4. Settings → Admin → turn off public signups if `NEXT_PUBLIC_DISABLE_SIGNUP`
    in `.env` didn't already cover it (internal tool, not a public SaaS).
+5. Confirm the real booking-confirmation form's "Privacy Policy" link points
+   at `https://vcpeer.com/privacy`, not `https://cal.com/privacy` — this is
+   NOT an in-app setting, it's handled by `docker-compose.yml`'s `calcom`
+   service `command:` override at container start. Check in a browser
+   profile that hasn't already loaded `/_next/static/` assets from this host
+   before the fix was deployed (immutable cache headers will otherwise show
+   a stale cached link even when the server is already fixed). See
+   `branding/README.md` "Privacy/Terms links are hardcoded, not
+   runtime-configurable" for the full mechanism and why env vars alone don't
+   work here.
 
 ## 3. Reverse proxy — Caddy (same pattern as the live `vcpeer` deploy)
 
@@ -327,7 +353,7 @@ dead; check `docker ps` for `Up` + the manual curl above as the real test.
   above. `/etc/cron.d/vcpeer-book-backup` installed on `box`, smoke-tested
   with a real manual dump.
 - **Brand color drift vs. the live `vcpeer` design system (found
-  2026-10-21, not yet applied live — needs box access)**: this repo's
+  2026-10-21, still not applied live — needs box access)**: this repo's
   `branding/README.md` documents the in-app "Custom brand colors" setting as
   light `#2563EB` / dark `#4678F9`, sourced from `vcpeer/public/css/
   _tokens.css` at the time. Re-reading that file today shows `vcpeer` has
@@ -338,17 +364,42 @@ dead; check `docker ps` for `Up` + the manual curl above as the real test.
   legacy files (`activeRooms.css`, `launchboard.html`). The live VCPeer Book
   booking page's light-mode accent is therefore still `#2563EB`, one shade
   off from the rest of the suite's current blue. Fix is in-app only (no
-  source change) but needs an interactive login: Settings → My Account →
-  Appearance → Custom brand colors → set **both** light and dark to
-  `#4678F9`. See `branding/README.md` for the full before/after. Added to
-  `NOTES.md` as a box/credentials-needed item.
-- **`TZ=UTC` and `NEXT_PUBLIC_WEBSITE_PRIVACY_POLICY_URL` added this pass
-  (2026-10-21) — not yet applied to the live `.env`**: both vars are now in
-  this repo's `.env`/`.env.example` and wired into `docker-compose.yml`
-  (`TZ` on all three long-running services; the privacy-policy URL is
-  `calcom`-only via `env_file`), but the live stack's config lives in
-  `/etc/products/vcpeer-book.env` on the box, which this pass never touched.
-  See `NOTES.md` for the exact commands to apply them there.
+  source change) but needs an interactive login, OR (added 2026-10-22) run
+  `deploy/apply-vcpeer-branding.sh` against the live Postgres container —
+  same effect, no browser needed. See `branding/README.md` for the full
+  before/after and the contrast-checker warning `#4678F9` triggers (expected,
+  advisory only). Still listed in `NOTES.md` as a box-access item since the
+  script needs to run against the live container, not this local one.
+- **`TZ=UTC` and the privacy/terms link fix added this pass (2026-10-21,
+  mechanism corrected 2026-10-22) — not yet applied to the live stack**:
+  `TZ` is a plain runtime env var and works as soon as it's in
+  `/etc/products/vcpeer-book.env` and the container restarts. The
+  privacy-policy link is NOT a plain runtime env var fix, despite looking
+  like one — **2026-10-22 finding**: `NEXT_PUBLIC_WEBSITE_PRIVACY_POLICY_URL`
+  is inlined into the compiled `.next` output at the Docker image's own
+  build time, so setting it in `.env` alone (this section's original plan)
+  has zero effect; the live site today still sends every real booker to
+  Cal.com's own `https://cal.com/privacy`. The actual fix is now in this
+  repo's `docker-compose.yml` (a `command:` override on the `calcom` service
+  that patches the compiled output at container start using Cal.com's own
+  `scripts/replace-placeholder.sh` — no source forked or edited) and must be
+  merged into the live compose file along with the env var, not instead of
+  it. See `branding/README.md` "Privacy/Terms links are hardcoded, not
+  runtime-configurable" for the full mechanism, and `NOTES.md` section 1 for
+  the exact box commands (now three docker-compose.yml changes to merge, not
+  two).
+- **Reproducible branding/config seed script (added 2026-10-22)**:
+  `deploy/apply-vcpeer-branding.sql` + `deploy/apply-vcpeer-branding.sh` —
+  idempotently applies brand colors, "Disable Cal.com branding", the Jitsi
+  Video app install/keys/event-type locations, and the 15min/30min
+  title/description copy via direct SQL, all in one command. Closes a real
+  gap: before this, every one of those settings existed only as a
+  browser-click or a one-off `psql` command, with nothing able to reproduce
+  them on a fresh install or disaster-recovery restore. Verified locally:
+  perturbed every value back to Cal.com's stock defaults, ran the script,
+  confirmed full recovery, ran it again to confirm it's a safe no-op. Not
+  yet run against the live box (needs access) — once it is, prefer it over
+  the manual browser steps in section 2 above for any future redeploy.
 - **VCPeer Book's booking link as a CTA on the main `vcpeer.com` app**: DONE
   (confirmed 2026-10-19 by reading the live `vcpeer` source, not just
   planned) — `https://book.vcpeer.com/admin/30min` is already linked from
