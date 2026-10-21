@@ -31,6 +31,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-calcom}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set a password in .env}
       POSTGRES_DB: ${POSTGRES_DB:-calcom}
+      TZ: ${TZ:-UTC}
     volumes:
       - vcpeer-book-postgres-data:/var/lib/postgresql/data
     networks:
@@ -49,11 +50,17 @@ services:
         reservations:
           memory: 256M
 
+  # Local-verification only — see RUNBOOK.md section 1 ("Do not run the
+  # mailpit service in production"). Gated behind the "dev" Compose profile
+  # so a bare `docker-compose up -d` (what a redeploy on the box actually
+  # runs) never starts it, even if an operator forgets the warning. Start it
+  # locally with `docker-compose --profile dev up -d`.
   mailpit:
     image: axllent/mailpit:latest
     platform: linux/arm64
     container_name: vcpeer-book-mailpit
     restart: unless-stopped
+    profiles: ['dev']
     ports:
       - '127.0.0.1:8025:8025' # web UI — view captured mail at http://localhost:8025
       - '127.0.0.1:1025:1025' # SMTP — local-only, no auth
@@ -80,6 +87,10 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-calcom}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-calcom}
       DATABASE_DIRECT_URL: postgresql://${POSTGRES_USER:-calcom}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-calcom}
+      # Forces Node's process timezone to UTC (upstream's own .env.example
+      # default) so server-rendered timestamps/logs line up with the UTC
+      # cron cadence in calcom-cron and the Postgres backup cron.
+      TZ: ${TZ:-UTC}
     ports:
       - '127.0.0.1:3000:3000'
     networks:
@@ -115,6 +126,12 @@ services:
     image: alpine:3.20
     container_name: vcpeer-book-calcom-cron
     restart: unless-stopped
+    environment:
+      # alpine's crond reads the container's TZ to interpret the schedule
+      # below. Pin it explicitly instead of relying on the base image's
+      # default (also UTC today, but implicit) — RUNBOOK.md's cadence table
+      # and the Postgres backup cron (03:27 UTC) both assume UTC.
+      TZ: ${TZ:-UTC}
     networks:
       - vcpeer-book
     depends_on:
