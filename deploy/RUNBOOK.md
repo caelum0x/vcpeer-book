@@ -1,8 +1,24 @@
 # VCPeer Book deploy runbook
 
-Everything in this file was **written, not executed** — this task was local-only
-(no deploy, no DNS, no servers, no store changes; disk-floor constrained). It is
-the exact procedure for whoever deploys this later.
+**Current live status (2026-10-21):** this is deployed and live, not just
+written. `https://book.vcpeer.com` (verified: `/auth/login` title "Login |
+VCPeer Book", `/admin/30min` title "30 min meeting | VCPeer Admin", both HTTP
+200, valid LE cert, `CN=book.vcpeer.com`, valid through 2027-01-12) is served
+by `vcpeer-book-postgres` + `vcpeer-book-calcom` on the `box` Oracle Ampere
+host (130.61.180.42), stack at `/opt/infra-box/stacks/vcpeer-book/`, config
+in `/etc/products/vcpeer-book.env`, Caddy site at
+`/etc/caddy/sites-enabled/vcpeer-book.caddy`. DNS (`book.vcpeer.com` A ->
+130.61.180.42) is live. The Jitsi app keys (`jitsiHost` ->
+`https://vcpeer.com/join`) are confirmed set in the live `App` table. As of
+2026-10-21, `vcpeer-book-calcom-cron` is also deployed in production (see
+section 8 — this closed the gap where `CRON_API_KEY` sat unused and
+reminder/webhook-retry endpoints never fired live), and a nightly Postgres
+backup cron (`/etc/cron.d/vcpeer-book-backup`, 03:27 UTC, 14-day retention,
+dumps to `/srv/backups/vcpeer-book/`, root:root 700) is installed and was
+smoke-tested with a real manual dump. Everything below this point describes
+the original write-up of the procedure (kept for historical accuracy and as
+the reference for re-deploys/upgrades) — read the "Known follow-ups" section
+at the bottom for what is still genuinely outstanding.
 
 Stack: Cal.com community edition (**cal.diy**, MIT, `github.com/calcom/cal.diy`
 — `calcom/cal.com` now redirects there) + Postgres, branded for VCPeer, with
@@ -153,22 +169,26 @@ runbooks).
 
 ## 5. Backup — Postgres volume
 
-```bash
-# Nightly cron on the box, same cadence as the other Oracle-hosted Postgres
-# (caldesk-pg, oxhan-postgres) per memory railyard-backend-infra:
-docker exec vcpeer-book-postgres pg_dump -U calcom calcom \
-  | gzip > /opt/backups/vcpeer-book/calcom-$(date +%F).sql.gz
+**DONE, live in production (2026-10-21).** Installed as `/etc/cron.d/vcpeer-book-backup`
+on `box`, following the exact pattern already used for `oxhan-backup` on the
+same host (custom-format `pg_dump -Fc`, not plain-SQL+gzip as originally
+sketched below — `-Fc` is what the sibling stacks on this box use and it's
+what `pg_restore` expects):
 
-# Keep 14 days, prune older:
-find /opt/backups/vcpeer-book -name '*.sql.gz' -mtime +14 -delete
 ```
+27 3 * * * root docker exec vcpeer-book-postgres pg_dump -U calcom -Fc calcom > /srv/backups/vcpeer-book/vcpeer-book-$(date +\%F).dump && find /srv/backups/vcpeer-book -name "vcpeer-book-2*.dump" -mtime +14 -delete
+```
+
+`/srv/backups/vcpeer-book/` is `root:root 0700`, same permissions as
+`/srv/backups/oxhan/`. Smoke-tested with a real manual run on 2026-10-21 —
+produced a 584KB `.dump` file, confirmed via `sudo ls -la`.
 
 Restore:
 ```bash
-docker-compose stop calcom
-gunzip -c /opt/backups/vcpeer-book/calcom-<date>.sql.gz \
-  | docker exec -i vcpeer-book-postgres psql -U calcom calcom
-docker-compose start calcom
+docker compose stop calcom
+sudo docker exec -i vcpeer-book-postgres pg_restore -U calcom -d calcom -c \
+  < /srv/backups/vcpeer-book/vcpeer-book-<date>.dump
+docker compose start calcom
 ```
 
 ## 6. Rollback
@@ -236,6 +256,23 @@ A 401 there means `CRON_API_KEY` in `.env` doesn't match what the `calcom`
 container has loaded — redeploy `calcom-cron` after fixing `.env`
 (`docker-compose up -d calcom-cron`).
 
+**DONE, deployed to production (2026-10-21).** This service existed locally
+since the 2026-10-?? fix but had never been pushed to the live
+`/opt/infra-box/stacks/vcpeer-book/docker-compose.yml` — the production
+stack ran with only `postgres` + `calcom` for a week while `CRON_API_KEY`
+sat unused in `/etc/products/vcpeer-book.env`. Closed this gap: added the
+same `calcom-cron` block to the production compose file (backed up the
+prior file as `docker-compose.yml.bak-pre-cron-<timestamp>` first), brought
+up only the new service with
+`docker compose --env-file /etc/products/vcpeer-book.env up -d calcom-cron`
+(did not touch the already-running `postgres`/`calcom` containers), and
+verified directly inside the container that
+`curl ... -H "authorization: $CRON_API_KEY" http://calcom:3000/api/cron/webhookTriggers`
+returns `200`. Busybox `crond -l 2` does not log successful job runs to
+stdout (only warnings/errors), so an empty `docker logs` is expected and is
+itself the "no 401s" signal — don't mistake silence for the service being
+dead; check `docker ps` for `Up` + the manual curl above as the real test.
+
 ## 9. Known follow-ups (not built here, honestly flagged)
 
 - **Per-booking unique VCPeer rooms**: DONE (2026-10-15 follow-up) — Cal.com's
@@ -248,9 +285,24 @@ container has loaded — redeploy `calcom-cron` after fixing `.env`
   env/settings in community edition (requires either an Enterprise-tier
   custom-logo feature or a source fork) — see `branding/README.md`. Not
   visible to attendees, only to the logged-in VCPeer team, so left as-is.
-- **SPF/DKIM for `bookings@vcpeer.com` via Scribase Mail** must be verified
-  before go-live or confirmation emails will land in spam — this is a
-  Scribase Mail Studio domain-verification step, not a Cal.com config step.
+- **SPF/DKIM for `bookings@vcpeer.com`**: production actually sends via OCI
+  Email Delivery (`smtp.email.eu-frankfurt-1.oci.oraclecloud.com`), not
+  Scribase Mail as this doc originally planned — confirmed by reading
+  `/etc/products/vcpeer-book.env` on `box`. SPF is **already correct**:
+  `dig TXT vcpeer.com` shows `v=spf1 ... include:eu.rp.oracleemaildelivery.com
+  ~all` live today. DKIM was **not** independently confirmed this pass (OCI's
+  DKIM CNAME selector name isn't known from outside the OCI console, so it
+  can't be checked via a blind `dig` the way SPF was) — if confirmation
+  emails ever start landing in spam, check DKIM signing status in the OCI
+  Email Delivery console for the `vcpeer.com` approved sender, not here.
+- **`CRON_API_KEY`-gated endpoints wired up in production**: DONE
+  (2026-10-21, this pass) — see section 8 above. The `calcom-cron` sidecar
+  was in the local repo's `docker-compose.yml` but had never been deployed
+  to the live stack; now live, verified with a direct 200 from
+  `/api/cron/webhookTriggers`.
+- **Nightly Postgres backup**: DONE (2026-10-21, this pass) — see section 5
+  above. `/etc/cron.d/vcpeer-book-backup` installed on `box`, smoke-tested
+  with a real manual dump.
 - **VCPeer Book's booking link as a CTA on the main `vcpeer.com` app**: DONE
   (confirmed 2026-10-19 by reading the live `vcpeer` source, not just
   planned) — `https://book.vcpeer.com/admin/30min` is already linked from
