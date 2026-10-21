@@ -12,9 +12,40 @@ beyond env/theming, which it didn't here).
 |---|---|---|
 | App name shown in page titles, emails, support links | `NEXT_PUBLIC_APP_NAME=VCPeer Book`, `NEXT_PUBLIC_COMPANY_NAME=VCPeer`, `NEXT_PUBLIC_SUPPORT_MAIL_ADDRESS=support@vcpeer.com` | `.env` |
 | Outbound email From name/address | `EMAIL_FROM=bookings@vcpeer.com`, `EMAIL_FROM_NAME=VCPeer` | `.env` |
-| Brand accent color on the public booking page (buttons, selected date) | Settings → My Account → Appearance → **Custom brand colors**: light `#2563EB`, dark `#4678F9` — the exact two colors used in `vcpeer/public/images/logo.svg` and `vcpeer/public/css/_tokens.css` (`--ds-brand-500`/the mark's blue circle) | In-app setting, stored in the `users` table — survives container restarts because it's in Postgres, not in the image |
+| Brand accent color on the public booking page (buttons, selected date) | Settings → My Account → Appearance → **Custom brand colors**: light `#2563EB`, dark `#4678F9` (set 2026-10-15, live today — see drift note directly below for what this should change to) | In-app setting, stored in the `users` table — survives container restarts because it's in Postgres, not in the image |
 | "Powered by Cal.com" footer on public booking pages | Settings → My Account → Appearance → **Disable Cal.com branding** → ON | Same in-app setting |
 | Signups | `NEXT_PUBLIC_DISABLE_SIGNUP=true` in production (this is an internal team booking tool, not a public multi-tenant SaaS) | `.env` |
+
+## Brand color drift vs. `vcpeer` — re-checked 2026-10-21
+
+The light/dark split above (`#2563EB` / `#4678F9`) was correct when set on
+2026-10-15, sourced from `vcpeer/public/css/_tokens.css`'s `--ds-brand-500`
+variable and `vcpeer/public/images/logo.svg`. Re-reading both files today
+(cross-product consistency check) found the source has moved:
+
+- `vcpeer/public/css/_tokens.css` now defines a **single**
+  `--ds-brand-500: #4678f9` — no separate light-mode value, no
+  `prefers-color-scheme` override anywhere in that file. `vcpeer` stopped
+  splitting brand color by theme; `#4678f9` is simply *the* brand blue now,
+  used across `whiteboard.css`, `login.css`, `landing.css`,
+  `waitingRoom.css`, and `client.css`.
+- `#2563EB` survives in exactly two places in `vcpeer`: the left circle of
+  `public/images/logo.svg` (the two-tone mark — blue + `#10B981` green, a
+  deliberate two-color logo choice, not a UI accent) and two files that
+  haven't been migrated to the shared token system yet
+  (`public/css/activeRooms.css`'s `--accent-hover`, and an inline
+  `background: var(--color-primary, #2563eb)` fallback in
+  `public/views/launchboard.html`).
+
+**Net effect**: VCPeer Book's live light-mode accent (`#2563EB`) is one
+shade off from what the rest of the VCPeer suite now renders
+(`#4678F9`) in light mode; dark mode already matches. Correct fix (in-app
+only, same as the original setup — no source change): Settings → My
+Account → Appearance → Custom brand colors → set **both** light and dark to
+`#4678F9`, matching the single current token. Not applied in this pass —
+requires an interactive admin login to `https://book.vcpeer.com/auth/login`
+with real credentials, which this pass didn't have; see the main repo's
+`NOTES.md` and `deploy/RUNBOOK.md` section 9.
 
 ## What's NOT branded (known gap, honest callout)
 

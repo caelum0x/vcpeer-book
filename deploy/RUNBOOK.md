@@ -33,8 +33,19 @@ Jitsi conferencing app — not a shared static link; see `branding/README.md`
 
 `calcom/cal.com` on Docker Hub has **not published anything past `v6.2.0`**
 since the `calcom/cal.com` → `calcom/cal.diy` rename (2026-09-26, confirmed via
-`gh api repos/calcom/cal.com` redirecting to `calcom/cal.diy`). As of this
-writing there is **no `cal.diy`-named image** on Docker Hub or GHCR yet.
+`gh api repos/calcom/cal.com` redirecting to `calcom/cal.diy`). **Re-checked
+2026-10-21**: still true — `calcom/cal.diy`'s latest GitHub release is also
+`v6.2.0` (2026-03-01), no newer tag exists upstream.
+
+**Update (2026-10-21): the `calcom/cal.diy` Docker Hub repo now exists, but
+is still empty** — `GET
+https://hub.docker.com/v2/repositories/calcom/cal.diy/` returns `200` with
+`date_registered: 2026-04-14` (so the namespace has been reserved for over
+six months), but
+`https://hub.docker.com/v2/repositories/calcom/cal.diy/tags/` returns
+`count: 0` — zero tags, zero pulls. Don't treat the repo's mere existence as
+"ready to switch to" — keep pulling `calcom/cal.com:v6.2.0-arm` (current
+pin, confirmed still correct) until that repo actually has a tag in it.
 
 Docker Hub does carry **native arm64 builds** of each release under a
 `-arm` tag suffix (confirmed via the Docker Hub tags API:
@@ -47,16 +58,23 @@ emulation if pulled on an arm64 host, which works but is slow and wastes
 CPU/RAM on a shared box.
 
 **Before every redeploy**, re-check for a newer release and for whether
-`calcom/cal.diy` has started publishing its own image yet:
+`calcom/cal.diy` has started actually publishing tags into that (now
+existing but still empty) image repo:
 
 ```bash
 curl -s "https://hub.docker.com/v2/repositories/calcom/cal.com/tags/?page_size=5&ordering=last_updated" \
   | python3 -c "import json,sys;[print(r['name'], r['last_updated']) for r in json.load(sys.stdin)['results']]"
 curl -s "https://api.github.com/repos/calcom/cal.diy/tags" | python3 -c "import json,sys;[print(t['name']) for t in json.load(sys.stdin)]" 2>&1 | head -5
+# Added 2026-10-21 — the cal.diy-named Docker Hub repo exists now but was
+# still empty as of this writing; this is the actual readiness check (count
+# must be > 0, not just a 200 on the repo URL):
+curl -s "https://hub.docker.com/v2/repositories/calcom/cal.diy/tags/?page_size=5" \
+  | python3 -c "import json,sys;d=json.load(sys.stdin);print('tag count:', d['count']);[print(r['name'], r['last_updated']) for r in d['results']]"
 ```
 
-If `cal.diy` ever ships its own multi-arch image, switch `docker-compose.yml`'s
-`calcom.image` to it and drop the `-arm` suffix convention above.
+If `cal.diy` ever ships its own multi-arch image (tag count above > 0),
+switch `docker-compose.yml`'s `calcom.image` to it and drop the `-arm`
+suffix convention above.
 
 ## 1. Oracle Ampere ARM64 box setup
 
@@ -95,10 +113,15 @@ docker-compose up -d calcom
 # entrypoint behavior verified locally — takes ~60-90s on first run).
 ```
 
-**Do not run the `mailpit` service in production** — remove it from the
-compose file or just never `docker-compose up -d mailpit` there. It exists
-only so this task could capture and inspect the confirmation email locally
-without a real SMTP provider.
+**Do not run the `mailpit` service in production.** As of 2026-10-21 this is
+now enforced by Compose itself, not just a warning in this doc — `mailpit`
+is gated behind the `dev` Compose profile in `docker-compose.yml`, so a bare
+`docker-compose up -d` (what section 1's own `docker-compose pull` /
+`docker-compose up -d postgres` / `docker-compose up -d calcom` sequence and
+any future redeploy run) **never starts it**, even if an operator forgets
+this paragraph. To run it locally for verification: `docker-compose
+--profile dev up -d mailpit`. It exists only so this task could capture and
+inspect the confirmation email locally without a real SMTP provider.
 
 ## 2. First-run setup (one-time, through the browser, via an SSH tunnel)
 
@@ -303,6 +326,29 @@ dead; check `docker ps` for `Up` + the manual curl above as the real test.
 - **Nightly Postgres backup**: DONE (2026-10-21, this pass) — see section 5
   above. `/etc/cron.d/vcpeer-book-backup` installed on `box`, smoke-tested
   with a real manual dump.
+- **Brand color drift vs. the live `vcpeer` design system (found
+  2026-10-21, not yet applied live — needs box access)**: this repo's
+  `branding/README.md` documents the in-app "Custom brand colors" setting as
+  light `#2563EB` / dark `#4678F9`, sourced from `vcpeer/public/css/
+  _tokens.css` at the time. Re-reading that file today shows `vcpeer` has
+  since consolidated to a **single** `--ds-brand-500: #4678f9` token used
+  everywhere (no more light/dark split, no `prefers-color-scheme` override)
+  — `#2563EB` now only survives in `vcpeer/public/images/logo.svg`'s left
+  circle (a two-tone mark, not the UI accent) and two not-yet-migrated
+  legacy files (`activeRooms.css`, `launchboard.html`). The live VCPeer Book
+  booking page's light-mode accent is therefore still `#2563EB`, one shade
+  off from the rest of the suite's current blue. Fix is in-app only (no
+  source change) but needs an interactive login: Settings → My Account →
+  Appearance → Custom brand colors → set **both** light and dark to
+  `#4678F9`. See `branding/README.md` for the full before/after. Added to
+  `NOTES.md` as a box/credentials-needed item.
+- **`TZ=UTC` and `NEXT_PUBLIC_WEBSITE_PRIVACY_POLICY_URL` added this pass
+  (2026-10-21) — not yet applied to the live `.env`**: both vars are now in
+  this repo's `.env`/`.env.example` and wired into `docker-compose.yml`
+  (`TZ` on all three long-running services; the privacy-policy URL is
+  `calcom`-only via `env_file`), but the live stack's config lives in
+  `/etc/products/vcpeer-book.env` on the box, which this pass never touched.
+  See `NOTES.md` for the exact commands to apply them there.
 - **VCPeer Book's booking link as a CTA on the main `vcpeer.com` app**: DONE
   (confirmed 2026-10-19 by reading the live `vcpeer` source, not just
   planned) — `https://book.vcpeer.com/admin/30min` is already linked from
