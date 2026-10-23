@@ -1,0 +1,8 @@
+Directory populated at runtime by platform/src/routes/domains.ts
+(appendCaddyBlock) — one `custom-domains.caddy` file with a site block
+per live paid-tier custom domain, plus a `.reload-requested` sentinel file
+consumed by the cron in deploy/RUNBOOK.md section 8c. Bind-mounted into
+the `platform` container by docker-compose.yml and imported by the box's
+main Caddyfile (`import /opt/infra-box/stacks/vcpeer-book/deploy/custom-domains/*.caddy`).
+Starts out empty, which is a valid/empty Caddy import — this file only
+exists so the directory survives a fresh `git clone`.

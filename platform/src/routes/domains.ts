@@ -11,7 +11,21 @@ import { ah } from "../lib/asyncHandler";
 
 export const domainsRouter = Router();
 
-const CADDY_SNIPPET_PATH = path.join(__dirname, "..", "..", "..", "deploy", "custom-domains.caddy");
+// Directory shared with the host's real Caddy process via a bind mount
+// (docker-compose.yml's `platform` service, `CUSTOM_DOMAINS_CADDY_DIR`
+// env var — defaults to a repo-local path for local dev, where no mount
+// exists and reload is a no-op anyway, see reloadCaddyIfLocal below).
+//
+// Fixed 2026-10-24: this used to resolve to a path *inside this
+// container's own filesystem* (`path.join(__dirname, "..", "..", "..",
+// "deploy", "custom-domains.caddy")` — three levels up from the compiled
+// `dist/routes/domains.js` lands at the container's filesystem root, never
+// mounted anywhere the host's Caddy process could read it). Every custom
+// domain that "went live" was writing a snippet nobody ever served.
+const CADDY_SNIPPET_DIR =
+  process.env.CUSTOM_DOMAINS_CADDY_DIR || path.join(__dirname, "..", "..", "..", "deploy", "custom-domains");
+const CADDY_SNIPPET_PATH = path.join(CADDY_SNIPPET_DIR, "custom-domains.caddy");
+const RELOAD_SENTINEL_PATH = path.join(CADDY_SNIPPET_DIR, ".reload-requested");
 
 interface OrgRow {
   id: number;
@@ -130,15 +144,20 @@ async function reloadCaddyIfLocal(): Promise<void> {
   // Only attempt a real reload when this service is actually running on the
   // same box as Caddy (production) — detected via an explicit env var
   // rather than guessing from hostname, so local/dev runs never try to
-  // shell out to a binary that isn't there.
+  // touch a directory that isn't mounted.
   if (process.env.VCPEER_BOOK_CADDY_RELOAD !== "true") return;
-  const { exec } = await import("child_process");
-  await new Promise<void>((resolve, reject) => {
-    exec("caddy reload --config /etc/caddy/Caddyfile", (err) => {
-      if (err) reject(err);
-      else resolve();
-    });
-  });
+  // Fixed 2026-10-24: this used to `exec("caddy reload ...")` directly —
+  // the `platform` container has no `caddy` binary and, even if it did,
+  // runs in its own PID/filesystem namespace, so the command would either
+  // fail outright or silently reload nothing on the host. Caddy itself
+  // also runs as the unprivileged `caddy` system user, not reachable from
+  // inside a Docker container without a docker-socket mount (not worth the
+  // privilege escalation for a reload). Instead: drop a sentinel file into
+  // the same bind-mounted directory the rendered `.caddy` snippet already
+  // lives in; a host-side root cron (deploy/RUNBOOK.md section 8c, installed
+  // alongside the existing Postgres backup cron) polls for it every minute,
+  // runs `systemctl reload caddy`, and deletes it.
+  fs.writeFileSync(RELOAD_SENTINEL_PATH, new Date().toISOString());
 }
 
 export function startDomainPollerJob(intervalMs = 60 * 1000): NodeJS.Timeout {

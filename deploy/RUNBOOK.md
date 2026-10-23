@@ -376,6 +376,39 @@ for what each route does; this section is deploy mechanics only.
    `curl https://book.vcpeer.com/admin/30min` (confirms Cal.com's own
    routes are untouched).
 
+## 8c. Custom-domain Caddy auto-provisioning — directory + reload cron (added 2026-10-24)
+
+Item 4's `pollPendingDomains()` (`routes/domains.ts`) renders a real Caddy
+site block per live paid-tier custom domain and needs the host's actual
+Caddy process to pick it up. Two one-time steps on the box, neither touches
+an existing site file:
+
+1. **Import the directory** — add one line to the box's main Caddyfile
+   (`/opt/infra-box/caddy/Caddyfile` and its deployed copy
+   `/etc/caddy/Caddyfile`), directly after the existing
+   `import /etc/caddy/sites-enabled/*.caddy` line:
+   ```caddyfile
+   import /opt/infra-box/stacks/vcpeer-book/deploy/custom-domains/*.caddy
+   ```
+   (adjust the path if this stack is checked out somewhere else on the box).
+   An empty/no-match glob is a valid Caddy import, so this is safe to add
+   before any custom domain has ever gone live. Validate + reload the same
+   way as any other Caddyfile edit: `sudo systemctl reload caddy`.
+2. **Install the reload cron** — `platform`'s container can't run
+   `systemctl reload caddy` itself (no `caddy` binary in the container, and
+   no docker-socket access by design — not worth the privilege escalation
+   for a reload). It drops a `.reload-requested` sentinel file into the
+   same bind-mounted directory instead; this cron on the host (root,
+   alongside the existing `/etc/cron.d/vcpeer-book-backup`) consumes it:
+   ```
+   * * * * * root test -f /opt/infra-box/stacks/vcpeer-book/deploy/custom-domains/.reload-requested && rm -f /opt/infra-box/stacks/vcpeer-book/deploy/custom-domains/.reload-requested && systemctl reload caddy
+   ```
+   Install as `/etc/cron.d/vcpeer-book-caddy-reload` (`root:root 0644`).
+
+Without both of these, a custom domain would flip to `status = 'live'` in
+`platform.domains` (DNS record real, Cloudflare propagation real) while its
+actual HTTPS traffic still 404s — this was the exact gap closed this round.
+
 ## 9. Known follow-ups (not built here, honestly flagged)
 
 - **Per-booking unique VCPeer rooms**: DONE (2026-10-15 follow-up) — Cal.com's

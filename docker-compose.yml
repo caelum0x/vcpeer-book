@@ -221,8 +221,20 @@ services:
       CALCOM_BASE_URL: http://calcom:3000
       PLATFORM_PORT: 4100
       TZ: ${TZ:-UTC}
+      # Shared with the host's real Caddy process via the volume mount
+      # below — see routes/domains.ts's 2026-10-24 fix comment for why this
+      # replaced an in-container-only path that Caddy could never read.
+      CUSTOM_DOMAINS_CADDY_DIR: /app/custom-domains
     ports:
       - '127.0.0.1:4100:4100'
+    volumes:
+      # Bind mount, not a named volume — must be a real host path Caddy's
+      # own `import .../custom-domains/*.caddy` (deploy/RUNBOOK.md 8c) can
+      # read directly, not a Docker-managed volume hidden inside
+      # /var/lib/docker. Resolves relative to this compose file's own
+      # directory (./deploy/custom-domains), matching wherever this stack
+      # itself is checked out — no separate host-path env var needed.
+      - ./deploy/custom-domains:/app/custom-domains
     networks:
       - vcpeer-book
     depends_on:
