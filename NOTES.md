@@ -45,6 +45,36 @@ passwordless sudo). Applied for real, live, this pass:
 Item 1's original text (the manual procedure, now executed) is kept below
 for historical reference.
 
+## DONE (2026-10-23): brand-color drift (item 2 below) closed, live
+
+Box access (`ssh box`) was available again this pass. Ran
+`deploy/apply-vcpeer-branding.sql` directly against `vcpeer-book-postgres`
+(`docker exec -i vcpeer-book-postgres psql -U calcom -d calcom <
+deploy/apply-vcpeer-branding.sql`) — no drift on the other idempotent
+settings (Jitsi keys, event-type titles/locations all converged to the same
+values, zero unexpected changes). Verified live over the wire: fetched
+`https://book.vcpeer.com/admin/30min` fresh (cache-busted) — 4 occurrences
+of `#4678F9` in the raw HTML, 0 of the old `#2563EB`. Item 2's text below is
+kept for historical reference; it is no longer outstanding.
+
+## Correction (2026-10-23): the "no off-box backup copy" gap in
+`ARCHITECTURE-2026-10-23.md` is wrong — one already exists
+
+That doc (written this pass, before this correction) claims "Currently
+`pg_dump` output never leaves `box`" and lists an off-box copy as a
+priority-2 build item. Checked live on `box` before building anything:
+`/opt/infra-box/backup/backup.sh` + `backup.timer` (systemd, 03:30 UTC) is a
+box-wide restic-to-Cloudflare-R2 job that backs up `/srv` (among other
+paths) every night, and `/srv/backups/vcpeer-book/` is not in
+`/opt/infra-box/backup/excludes.txt`. Confirmed directly: `restic ls latest
+/srv/backups/vcpeer-book` on `box` lists all three retained
+`vcpeer-book-2026-10-*.dump` files inside the latest nightly snapshot. The
+nightly Postgres dump already leaves the box every night via this
+pre-existing, portfolio-wide mechanism — no new off-box-copy work is
+needed for `vcpeer-book` specifically. Do not re-build a bespoke
+scp/rsync-to-another-box job for this; it would be redundant with infra
+already covering it.
+
 ## 1. Apply `TZ=UTC` and the privacy/terms link fix to the live stack — DONE, see above
 
 **2026-10-22 finding, important — read before applying the above:** setting
@@ -126,12 +156,7 @@ copy), so there was never a container to stop or remove.
 
 ## Still genuinely outstanding (needs owner-only access)
 
-- **Item 2 (brand-color drift)** — still needs a real admin browser login
-  (`https://book.vcpeer.com/auth/login`); the admin password lives in a
-  password manager this pass didn't have access to. Run
-  `deploy/apply-vcpeer-branding.sh` against `vcpeer-book-postgres` on box,
-  or do the manual browser steps in item 2 above, once that login is
-  available.
+- **Item 2 (brand-color drift)** — DONE, see the 2026-10-23 section above.
 - **Item 3 (DKIM confirmation)** — needs OCI Email Delivery console access,
   not a box SSH session.
 - **New gap found 2026-10-22, not yet fixed:** the live admin user (`id=1`,

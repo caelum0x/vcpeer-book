@@ -353,23 +353,17 @@ dead; check `docker ps` for `Up` + the manual curl above as the real test.
   above. `/etc/cron.d/vcpeer-book-backup` installed on `box`, smoke-tested
   with a real manual dump.
 - **Brand color drift vs. the live `vcpeer` design system (found
-  2026-10-21, still not applied live — needs box access)**: this repo's
-  `branding/README.md` documents the in-app "Custom brand colors" setting as
-  light `#2563EB` / dark `#4678F9`, sourced from `vcpeer/public/css/
-  _tokens.css` at the time. Re-reading that file today shows `vcpeer` has
-  since consolidated to a **single** `--ds-brand-500: #4678f9` token used
-  everywhere (no more light/dark split, no `prefers-color-scheme` override)
-  — `#2563EB` now only survives in `vcpeer/public/images/logo.svg`'s left
-  circle (a two-tone mark, not the UI accent) and two not-yet-migrated
-  legacy files (`activeRooms.css`, `launchboard.html`). The live VCPeer Book
-  booking page's light-mode accent is therefore still `#2563EB`, one shade
-  off from the rest of the suite's current blue. Fix is in-app only (no
-  source change) but needs an interactive login, OR (added 2026-10-22) run
-  `deploy/apply-vcpeer-branding.sh` against the live Postgres container —
-  same effect, no browser needed. See `branding/README.md` for the full
+  2026-10-21, DONE 2026-10-23)**: this repo's `branding/README.md`
+  documented the in-app "Custom brand colors" setting as light `#2563EB` /
+  dark `#4678F9`, stale against `vcpeer`'s single current
+  `--ds-brand-500: #4678f9` token. Fixed live 2026-10-23 by running
+  `deploy/apply-vcpeer-branding.sql` against the production
+  `vcpeer-book-postgres` container (no browser login needed) — verified
+  both in Postgres (`brandColor = darkBrandColor = #4678F9`) and over the
+  wire (fresh fetch of `https://book.vcpeer.com/admin/30min` shows
+  `#4678F9`, zero `#2563EB`). See `branding/README.md` for the full
   before/after and the contrast-checker warning `#4678F9` triggers (expected,
-  advisory only). Still listed in `NOTES.md` as a box-access item since the
-  script needs to run against the live container, not this local one.
+  advisory only, does not block saving).
 - **`TZ=UTC` and the privacy/terms link fix added this pass (2026-10-21,
   mechanism corrected 2026-10-22) — not yet applied to the live stack**:
   `TZ` is a plain runtime env var and works as soon as it's in

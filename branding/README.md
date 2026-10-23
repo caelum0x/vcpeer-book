@@ -15,7 +15,7 @@ here).
 |---|---|---|
 | App name shown in page titles, emails, support links | `NEXT_PUBLIC_APP_NAME=VCPeer Book`, `NEXT_PUBLIC_COMPANY_NAME=VCPeer`, `NEXT_PUBLIC_SUPPORT_MAIL_ADDRESS=support@vcpeer.com` | `.env` |
 | Outbound email From name/address | `EMAIL_FROM=bookings@vcpeer.com`, `EMAIL_FROM_NAME=VCPeer` | `.env` |
-| Brand accent color on the public booking page (buttons, selected date) | Settings → My Account → Appearance → **Custom brand colors**: light `#4678F9`, dark `#4678F9` — matches the single current `vcpeer` brand token (see drift note below) | In-app setting, stored in the `users` table — survives container restarts because it's in Postgres, not in the image. **Reproducible via `deploy/apply-vcpeer-branding.sql`**, see "Reproducible branding seed" below. |
+| Brand accent color on the public booking page (buttons, selected date) | Settings → My Account → Appearance → **Custom brand colors**: light `#4678F9`, dark `#4678F9` — matches the single current `vcpeer` brand token (see drift note below, now closed) | In-app setting, stored in the `users` table — survives container restarts because it's in Postgres, not in the image. **Reproducible via `deploy/apply-vcpeer-branding.sql`**, see "Reproducible branding seed" below. |
 | "Powered by Cal.com" footer on public booking pages | Settings → My Account → Appearance → **Disable Cal.com branding** → ON | Same in-app setting; also reproducible via the seed script |
 | Privacy policy / Terms of service links on the public booking form | `docker-compose.yml`'s `calcom` service `command:` (patches the compiled `.next` output at container start) — **env vars alone do NOT work**, see "Privacy/Terms links are hardcoded, not runtime-configurable" below | `docker-compose.yml` + `.env` |
 | Signups | `NEXT_PUBLIC_DISABLE_SIGNUP=true` in production (this is an internal team booking tool, not a public multi-tenant SaaS) | `.env` |
@@ -123,18 +123,17 @@ variable and `vcpeer/public/images/logo.svg`. Re-reading both files today
   `background: var(--color-primary, #2563eb)` fallback in
   `public/views/launchboard.html`).
 
-**Net effect**: VCPeer Book's live light-mode accent (`#2563EB`) is one
-shade off from what the rest of the VCPeer suite now renders
-(`#4678F9`) in light mode; dark mode already matches. Correct fix (in-app
-only, same as the original setup — no source change): Settings → My
-Account → Appearance → Custom brand colors → set **both** light and dark to
-`#4678F9`, matching the single current token. **Still not applied in
-production** — requires an interactive admin login to
-`https://book.vcpeer.com/auth/login` with real credentials, which this pass
-didn't have either; see the main repo's `NOTES.md` and
-`deploy/RUNBOOK.md` section 9. Applied and verified **locally** this pass
-(2026-10-22) via `deploy/apply-vcpeer-branding.sql` — same value, same
-mechanism, reproducible for the live box once access is back.
+**DONE, applied live (2026-10-23).** Box access (`ssh box`) was available
+this pass — ran `deploy/apply-vcpeer-branding.sql` directly against the live
+`vcpeer-book-postgres` container (`docker exec -i vcpeer-book-postgres psql
+-U calcom -d calcom < deploy/apply-vcpeer-branding.sql`). Verified in two
+ways: (1) in-container, the script's own verification output shows
+`brandColor = darkBrandColor = #4678F9` for the admin user, Jitsi keys and
+both event types unchanged (idempotent — no drift on the other settings);
+(2) over the wire, fetched `https://book.vcpeer.com/admin/30min` fresh
+(cache-busted) and grepped the raw HTML — four occurrences of `#4678F9`,
+zero of the old `#2563EB`. Every real booker now sees the current VCPeer
+brand blue in light mode, matching dark mode and the rest of the suite.
 
 One thing to know before applying this live: Cal.com's own appearance
 settings UI flags `#4678F9` as **failing its button-contrast check** in
