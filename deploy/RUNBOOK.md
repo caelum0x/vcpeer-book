@@ -322,6 +322,60 @@ stdout (only warnings/errors), so an empty `docker logs` is expected and is
 itself the "no 401s" signal — don't mistake silence for the service being
 dead; check `docker ps` for `Up` + the manual curl above as the real test.
 
+## 8b. Platform service deploy (added 2026-10-23 — self-serve signup, analytics, webhooks, billing, custom domains, public API, embeddable widget)
+
+Real application code, not a Cal.com config patch — lives in `platform/`
+(own `package.json`, its own `Dockerfile`), added as a fourth service in
+`docker-compose.yml` (`platform`, port 4100, `127.0.0.1`-only). See
+`platform/src/server.ts`'s header comments and `BUILD-LOG-2026-10-23.md`
+for what each route does; this section is deploy mechanics only.
+
+1. **Bring the container up** (additive — never touches `postgres`/`calcom`):
+   ```bash
+   cd /opt/vcpeer-book   # or wherever this repo lives on the box
+   docker compose --env-file /etc/products/vcpeer-book.env build platform
+   docker compose --env-file /etc/products/vcpeer-book.env up -d platform
+   docker compose logs -f platform   # expect "listening on :4100", then "ok":true from a curl to /healthz
+   ```
+2. **Fill in the new env vars** in `/etc/products/vcpeer-book.env` (see
+   `.env.example`'s "PLATFORM SERVICE" section for the full list and what
+   each one gates). Nothing here is required to boot — every missing var
+   degrades gracefully (Slack/Discord notifications log a one-time warning
+   and no-op, Dodo billing returns a clear 503, Cloudflare domain
+   provisioning returns a clear 503) — but each is a real feature with
+   nothing live until it's set.
+3. **Set `VCPEER_BOOK_CADDY_RELOAD=true`** only on the box itself (never
+   locally) — this is what lets `routes/domains.ts`'s background poller
+   actually run `caddy reload` once a paid org's custom domain goes live.
+4. **Merge `deploy/platform.caddy`** into the box's Caddyfile (same
+   "merge by hand, don't overwrite" rule as section 3) — routes the
+   marketing site, signup wizard, dashboard, widget, and all `/api/*`
+   `/v1/*` `/webhooks/*` paths to the new container; everything else keeps
+   going straight to `calcom`, byte-for-byte unchanged from before this
+   service existed.
+5. **Configure the Cal.com -> platform webhook** (powers item 6's
+   notifications/no-show detection and feeds item 5's analytics from
+   `BOOKING_CREATED`/`BOOKING_CANCELLED`/`BOOKING_RESCHEDULED`): log in as
+   the admin, Settings -> Developer -> Webhooks -> New Webhook ->
+   Subscriber URL `https://book.vcpeer.com/webhooks/calcom`, Payload
+   Template default, Secret = the same value as `CALCOM_WEBHOOK_SECRET` in
+   `/etc/products/vcpeer-book.env`. This is an in-app, one-time step with
+   no API shortcut available before an API key already exists — can't be
+   scripted from a pass without an interactive admin session.
+6. **Mint the first API keys** (item 8's widget + item 9's public API):
+   ```bash
+   curl -X POST https://book.vcpeer.com/api/admin/api-keys \
+     -H "x-admin-secret: $ADMIN_API_SECRET" \
+     -H "content-type: application/json" \
+     -d '{"label":"vcpeer.com widget","scope":"widget"}'
+   ```
+   Save the returned key immediately — only its hash is stored, it cannot
+   be retrieved again (see `routes/adminKeys.ts`).
+7. **Verify live**: `curl https://book.vcpeer.com/healthz` (platform),
+   `curl https://book.vcpeer.com/pricing` (marketing site through Caddy),
+   `curl https://book.vcpeer.com/admin/30min` (confirms Cal.com's own
+   routes are untouched).
+
 ## 9. Known follow-ups (not built here, honestly flagged)
 
 - **Per-booking unique VCPeer rooms**: DONE (2026-10-15 follow-up) — Cal.com's

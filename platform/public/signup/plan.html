@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Choose your plan — VCPeer Book</title>
+<link rel="stylesheet" href="/assets/site.css" />
+</head>
+<body>
+<main class="wizard">
+  <div class="wizard__step">Step 1 of 2</div>
+  <h1>Choose your plan</h1>
+  <p class="wizard__sub">Unlimited event types and unmetered VCPeer video calls on every plan — no card required to start.</p>
+
+  <div class="plans">
+    <label class="plan-card plan-card--selected" data-plan="free">
+      <input type="radio" name="plan" value="free" checked />
+      <div class="plan-card__name">Free</div>
+      <div class="plan-card__price">$0</div>
+      <ul class="plan-card__features">
+        <li>Unlimited event types</li>
+        <li>Unmetered VCPeer video calls</li>
+        <li>book.vcpeer.com/&lt;you&gt; link</li>
+      </ul>
+    </label>
+    <label class="plan-card" data-plan="pro">
+      <input type="radio" name="plan" value="pro" />
+      <div class="plan-card__name">Pro</div>
+      <div class="plan-card__price">Custom domain</div>
+      <ul class="plan-card__features">
+        <li>Everything in Free</li>
+        <li>Your own subdomain or domain</li>
+        <li>Remove VCPeer branding</li>
+      </ul>
+    </label>
+  </div>
+
+  <button id="continue" class="btn btn--primary">Continue &rarr;</button>
+</main>
+<script>
+  document.querySelectorAll(".plan-card").forEach(function (card) {
+    card.addEventListener("click", function () {
+      document.querySelectorAll(".plan-card").forEach(function (c) { c.classList.remove("plan-card--selected"); });
+      card.classList.add("plan-card--selected");
+      card.querySelector("input").checked = true;
+    });
+  });
+  document.getElementById("continue").addEventListener("click", function () {
+    var plan = document.querySelector('input[name="plan"]:checked').value;
+    sessionStorage.setItem("vcb_plan", plan);
+    window.location.href = "/signup/workspace";
+  });
+</script>
+</body>
+</html>

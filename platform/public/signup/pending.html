@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Finish signup — VCPeer Book</title>
+<link rel="stylesheet" href="/assets/site.css" />
+</head>
+<body>
+<main class="wizard">
+  <h1>One more step</h1>
+  <p class="wizard__sub">Your workspace is reserved. Finish creating your account to activate it — pick a password on
+  Cal.com's own sign-up form.</p>
+  <a id="finish" class="btn btn--primary" href="#">Finish on the signup form &rarr;</a>
+  <p class="wizard__sub" id="waiting" hidden>Waiting for you to finish signing up — this page checks automatically every few seconds.</p>
+  <div id="ready" hidden>
+    <p class="wizard__sub">You're live. Your booking link:</p>
+    <a id="bookingLink" href="#"></a>
+  </div>
+</main>
+<script>
+  var signupUrl = sessionStorage.getItem("vcb_signup_url");
+  var statusUrl = sessionStorage.getItem("vcb_status_url");
+  var finish = document.getElementById("finish");
+  if (signupUrl) finish.href = signupUrl;
+
+  function poll() {
+    if (!statusUrl) return;
+    fetch(statusUrl)
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.data && res.data.status === "active" && res.data.bookingUrl) {
+          document.getElementById("waiting").hidden = true;
+          document.getElementById("ready").hidden = false;
+          var link = document.getElementById("bookingLink");
+          link.href = res.data.bookingUrl;
+          link.textContent = res.data.bookingUrl;
+        } else {
+          document.getElementById("waiting").hidden = false;
+          setTimeout(poll, 5000);
+        }
+      })
+      .catch(function () { setTimeout(poll, 8000); });
+  }
+  poll();
+</script>
+</body>
+</html>

@@ -1,0 +1,133 @@
+:root {
+  --vcpeer-blue: #4678f9;
+  --ink: #11131a;
+  --muted: #5b6472;
+  --border: #e2e6ee;
+  --bg: #ffffff;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+}
+a { color: var(--vcpeer-blue); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.btn {
+  display: inline-block;
+  padding: 12px 20px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  background: #fff;
+  color: var(--ink);
+}
+.btn--primary {
+  background: var(--vcpeer-blue);
+  border-color: var(--vcpeer-blue);
+  color: #fff;
+}
+.btn--primary:hover { background: #3461e0; text-decoration: none; }
+
+.wizard {
+  max-width: 480px;
+  margin: 10vh auto;
+  padding: 0 24px;
+}
+.wizard__step {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--vcpeer-blue);
+  letter-spacing: 0.04em;
+}
+.wizard h1 { font-size: 28px; margin: 8px 0 4px; }
+.wizard__sub { color: var(--muted); margin-bottom: 24px; }
+.field { display: block; margin-bottom: 16px; }
+.field span { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+.field input, .field select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 15px;
+}
+.error { color: #c0392b; font-size: 14px; margin-bottom: 12px; }
+
+.plans { display: flex; gap: 12px; margin-bottom: 24px; }
+.plan-card {
+  flex: 1;
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  cursor: pointer;
+}
+.plan-card input { display: none; }
+.plan-card--selected { border-color: var(--vcpeer-blue); }
+.plan-card__name { font-weight: 700; margin-bottom: 4px; }
+.plan-card__price { color: var(--vcpeer-blue); font-weight: 600; margin-bottom: 10px; }
+.plan-card__features { margin: 0; padding-left: 18px; color: var(--muted); font-size: 13px; }
+
+/* Marketing site */
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 32px;
+  border-bottom: 1px solid var(--border);
+}
+.nav__brand { font-weight: 800; font-size: 18px; }
+.nav__links a { margin-left: 24px; color: var(--ink); font-weight: 600; font-size: 14px; }
+
+.hero {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 96px 24px 48px;
+  text-align: center;
+}
+.hero h1 { font-size: 44px; line-height: 1.15; margin-bottom: 16px; }
+.hero p { font-size: 18px; color: var(--muted); max-width: 620px; margin: 0 auto 32px; }
+.hero__ctas { display: flex; gap: 12px; justify-content: center; }
+
+.section { max-width: 960px; margin: 0 auto; padding: 48px 24px; }
+.section h2 { font-size: 28px; text-align: center; margin-bottom: 32px; }
+
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+}
+.card h3 { margin-top: 0; font-size: 17px; }
+.card p { color: var(--muted); font-size: 14px; }
+
+.pricing-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; max-width: 680px; margin: 0 auto; }
+.price-card {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 32px;
+  text-align: center;
+}
+.price-card--highlight { border-color: var(--vcpeer-blue); box-shadow: 0 0 0 1px var(--vcpeer-blue); }
+.price-card__amount { font-size: 36px; font-weight: 800; margin: 12px 0; }
+.price-card ul { list-style: none; padding: 0; margin: 20px 0; color: var(--muted); font-size: 14px; }
+.price-card li { margin-bottom: 8px; }
+
+.footer {
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  padding: 40px 24px;
+  border-top: 1px solid var(--border);
+}
+
+/* Dashboard */
+.dashboard { max-width: 960px; margin: 0 auto; padding: 32px 24px; }
+.dashboard h1 { font-size: 24px; }
+table.funnel { width: 100%; border-collapse: collapse; margin-top: 16px; }
+table.funnel th, table.funnel td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 14px; }
+table.funnel th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }

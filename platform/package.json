@@ -1,0 +1,33 @@
+{
+  "name": "vcpeer-book-platform",
+  "version": "0.1.0",
+  "description": "VCPeer Book Platform API — standalone Node/Express service providing self-serve signup, booking-funnel analytics, webhook-driven notifications, billing/feature-flags, custom-domain provisioning, a public REST API, and an embeddable booking widget in front of the self-hosted Cal.com (cal.diy) instance at book.vcpeer.com. Talks to Cal.com only over HTTP and via its own Postgres schema ('platform') in the same database — no Cal.com source is forked or edited.",
+  "private": true,
+  "type": "commonjs",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && cp src/migrations.sql dist/migrations.sql",
+    "start": "node dist/server.js",
+    "dev": "ts-node-dev --respawn --transpile-only src/server.ts"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dodopayments": "^1.17.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.4.0",
+    "nodemailer": "^6.9.14",
+    "pg": "^8.12.0",
+    "standardwebhooks": "^1.1.1",
+    "undici": "^6.19.8"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.0",
+    "@types/nodemailer": "^6.4.15",
+    "@types/pg": "^8.11.6",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.5.4"
+  }
+}

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Booking funnel — VCPeer Book</title>
+<link rel="stylesheet" href="/assets/site.css" />
+</head>
+<body>
+<main class="dashboard">
+  <h1>Booking funnel analytics</h1>
+  <p style="color:#5b6472">Last <span id="days">30</span> days — page view &rarr; slot selected &rarr; confirmed &rarr; call joined.</p>
+  <table class="funnel">
+    <thead>
+      <tr>
+        <th>Event type</th>
+        <th>Views</th>
+        <th>Slots selected</th>
+        <th>Confirmed</th>
+        <th>Cancelled</th>
+        <th>Calls joined</th>
+        <th>View&rarr;confirm %</th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+</main>
+<script>
+  fetch("/api/analytics/summary?days=30")
+    .then(function (r) { return r.json(); })
+    .then(function (res) {
+      document.getElementById("days").textContent = res.days;
+      var tbody = document.getElementById("rows");
+      if (!res.funnels.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="color:#5b6472">No events recorded yet.</td></tr>';
+        return;
+      }
+      res.funnels.forEach(function (f) {
+        var tr = document.createElement("tr");
+        tr.innerHTML =
+          "<td>" + (f.eventTypeSlug || "(all)") + "</td>" +
+          "<td>" + f.pageViews + "</td>" +
+          "<td>" + f.slotsSelected + "</td>" +
+          "<td>" + f.bookingsConfirmed + "</td>" +
+          "<td>" + f.bookingsCancelled + "</td>" +
+          "<td>" + f.callsJoined + "</td>" +
+          "<td>" + f.overallConversionRate + "%</td>";
+        tbody.appendChild(tr);
+      });
+    })
+    .catch(function (err) {
+      document.getElementById("rows").innerHTML = '<tr><td colspan="7">Could not load: ' + err.message + "</td></tr>";
+    });
+</script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Widget demo — VCPeer Book</title>
+<link rel="stylesheet" href="/widget.css" />
+<style>body { font-family: -apple-system, sans-serif; padding: 40px; }</style>
+</head>
+<body>
+<h1>Embeddable booking widget — demo</h1>
+<p>This div is rendered entirely by <code>/widget.js</code>, calling the public REST API (item 9) with a
+widget-scoped key. Replace <code>data-key</code> with a real key created via
+<code>platform.api_keys</code> (scope = 'widget') before using in production.</p>
+
+<div data-vcpeer-book data-key="REPLACE_WITH_WIDGET_KEY" data-username="admin" data-event="30min"></div>
+
+<script src="/widget.js" defer></script>
+</body>
+</html>

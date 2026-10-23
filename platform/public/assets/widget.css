@@ -1,0 +1,59 @@
+.vcpeer-book-widget {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  max-width: 420px;
+  border: 1px solid #e2e6ee;
+  border-radius: 12px;
+  padding: 16px;
+  background: #ffffff;
+  color: #11131a;
+}
+.vcpeer-book-widget__status {
+  font-size: 14px;
+  color: #5b6472;
+  padding: 8px 0;
+}
+.vcpeer-book-widget__day {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #5b6472;
+  margin: 10px 0 6px;
+}
+.vcpeer-book-widget__slot {
+  display: inline-block;
+  margin: 0 6px 6px 0;
+  padding: 8px 12px;
+  border: 1px solid #4678f9;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #4678f9;
+  font-size: 13px;
+  cursor: pointer;
+}
+.vcpeer-book-widget__slot:hover {
+  background: #4678f9;
+  color: #ffffff;
+}
+.vcpeer-book-widget__form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.vcpeer-book-widget__input {
+  padding: 9px 10px;
+  border: 1px solid #d7dbe3;
+  border-radius: 8px;
+  font-size: 14px;
+}
+.vcpeer-book-widget__confirm {
+  padding: 10px 14px;
+  border: none;
+  border-radius: 8px;
+  background: #4678f9;
+  color: #ffffff;
+  font-size: 14px;
+  cursor: pointer;
+}
+.vcpeer-book-widget__confirm:hover {
+  background: #3461e0;
+}

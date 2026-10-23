@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Set up your workspace — VCPeer Book</title>
+<link rel="stylesheet" href="/assets/site.css" />
+</head>
+<body>
+<main class="wizard">
+  <div class="wizard__step">Step 2 of 2</div>
+  <h1>Set up your workspace</h1>
+  <p class="wizard__sub">This becomes your booking link: <code id="preview">book.vcpeer.com/your-slug</code></p>
+
+  <label class="field">
+    <span>Workspace slug</span>
+    <input id="slug" type="text" placeholder="acme" autocomplete="off" />
+  </label>
+  <label class="field">
+    <span>Email</span>
+    <input id="email" type="email" placeholder="you@company.com" autocomplete="off" />
+  </label>
+  <label class="field">
+    <span>First event type</span>
+    <select id="eventType">
+      <option value="demo_30">30-min demo call</option>
+      <option value="support_15">15-min support call</option>
+      <option value="consultation_45">45-min consultation</option>
+    </select>
+  </label>
+
+  <div id="error" class="error" hidden></div>
+  <button id="create" class="btn btn--primary">Create my workspace &rarr;</button>
+</main>
+<script>
+  var slugInput = document.getElementById("slug");
+  var preview = document.getElementById("preview");
+  slugInput.addEventListener("input", function () {
+    var v = slugInput.value.toLowerCase().replace(/[^a-z0-9-]/g, "");
+    slugInput.value = v;
+    preview.textContent = "book.vcpeer.com/" + (v || "your-slug");
+  });
+
+  document.getElementById("create").addEventListener("click", function () {
+    var errorBox = document.getElementById("error");
+    errorBox.hidden = true;
+    var body = {
+      slug: slugInput.value,
+      email: document.getElementById("email").value,
+      plan: sessionStorage.getItem("vcb_plan") || "free",
+      requestedEventType: document.getElementById("eventType").value,
+    };
+    fetch("/api/onboarding/start", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    })
+      .then(function (r) { return r.json().then(function (json) { return { ok: r.ok, json: json }; }); })
+      .then(function (res) {
+        if (!res.ok) throw new Error(res.json.error || "Could not create workspace");
+        sessionStorage.setItem("vcb_signup_url", res.json.data.signupUrl);
+        sessionStorage.setItem("vcb_status_url", res.json.data.statusUrl);
+        sessionStorage.setItem("vcb_slug", body.slug);
+        window.location.href = "/signup/pending";
+      })
+      .catch(function (err) {
+        errorBox.textContent = err.message;
+        errorBox.hidden = false;
+      });
+  });
+</script>
+</body>
+</html>

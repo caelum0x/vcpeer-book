@@ -34,6 +34,17 @@ services:
       TZ: ${TZ:-UTC}
     volumes:
       - vcpeer-book-postgres-data:/var/lib/postgresql/data
+    ports:
+      # 127.0.0.1-only, same bind pattern as the `calcom` service's own
+      # 3000 mapping below — lets the `platform` service's own local dev
+      # loop (`npm run dev`, run outside Docker for fast iteration) reach
+      # Postgres directly without being inside the `vcpeer-book` Docker
+      # network. Never exposed beyond localhost in production either way.
+      # Host port 55432, not the default 5432 — avoids colliding with any
+      # native/Homebrew Postgres already listening on a dev machine
+      # (confirmed locally: a native postgres on 5432 silently intercepted
+      # this mapping during this repo's own verification pass).
+      - '127.0.0.1:55432:5432'
     networks:
       - vcpeer-book
     healthcheck:
@@ -190,6 +201,46 @@ services:
         limits:
           cpus: '0.1'
           memory: 64M
+
+  # VCPeer Book Platform — standalone Node/Express service (platform/) that
+  # sits in front of this same Cal.com instance: self-serve signup wizard,
+  # booking-funnel analytics, webhook-driven notifications/no-show
+  # detection, a public REST API + embeddable widget, billing/feature-flags,
+  # and custom-domain provisioning. Talks to Cal.com only over HTTP and
+  # shares the SAME Postgres container/credentials via its own `platform`
+  # schema (platform/src/migrations.sql) — zero Cal.com source touched. See
+  # platform/README section of deploy/RUNBOOK.md for the Caddy routing this
+  # needs on top of this compose file.
+  platform:
+    build: ./platform
+    container_name: vcpeer-book-platform
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-calcom}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-calcom}
+      CALCOM_BASE_URL: http://calcom:3000
+      PLATFORM_PORT: 4100
+      TZ: ${TZ:-UTC}
+    ports:
+      - '127.0.0.1:4100:4100'
+    networks:
+      - vcpeer-book
+    depends_on:
+      postgres:
+        condition: service_healthy
+      calcom:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:4100/healthz']
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
 
 networks:
   vcpeer-book:

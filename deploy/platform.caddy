@@ -1,0 +1,38 @@
+# VCPeer Book Platform — Caddy routing additions.
+#
+# Merge this BY HAND into the box's existing `book.vcpeer.com { ... }`
+# block in its Caddyfile (same "merge, don't overwrite" rule as
+# deploy/RUNBOOK.md section 3 already documents for the base Cal.com proxy).
+# Routes a specific, narrow set of paths to the new `platform` container
+# (127.0.0.1:4100) — everything else keeps going straight to `calcom`
+# (127.0.0.1:3000), completely unchanged.
+#
+# Order matters in Caddy: more specific matchers must come before the
+# catch-all `reverse_proxy 127.0.0.1:3000`.
+
+book.vcpeer.com {
+    encode gzip
+
+    # Platform service: marketing site root, pricing, signup wizard,
+    # analytics dashboard, embeddable widget, webhooks, and the public API.
+    @platform path / /pricing /pricing.html /signup /signup/* /dashboard /dashboard/* \
+        /widget.js /widget.css /widget/* /api/track /api/analytics/* /api/onboarding/* \
+        /api/billing/* /api/domains/* /api/admin/* /api/settings/* /v1/* \
+        /webhooks/calcom /webhooks/dodo /webhooks/vcpeer-join /healthz
+    handle @platform {
+        reverse_proxy 127.0.0.1:4100
+    }
+
+    # Everything else (Cal.com's own /admin/*, /auth/*, /<username>/<slug>,
+    # /booking/*, /event-types, /api/* for Cal.com's own routes, etc.)
+    handle {
+        reverse_proxy 127.0.0.1:3000
+    }
+}
+
+# Custom-domain tenants (item 4) — appended automatically by
+# routes/domains.ts's pollPendingDomains() as each paid org's domain goes
+# live. Import this file from the box's main Caddyfile with:
+#   import /opt/vcpeer-book/deploy/custom-domains.caddy
+# (file created on first use; starts out absent, which is a valid/empty
+# import in Caddy).
