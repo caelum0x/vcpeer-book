@@ -82,6 +82,30 @@ domainsRouter.post("/api/domains/provision", ah(async (req, res) => {
   }
 }));
 
+// Lists every domain row for one org — backs the settings page (item 4's
+// missing UI, see BUILD-LOG-2026-10-24.md) so a tenant can see what they've
+// already provisioned without a direct DB query.
+domainsRouter.get(
+  "/api/domains",
+  ah(async (req, res) => {
+    const slug = typeof req.query.slug === "string" ? req.query.slug : undefined;
+    if (!slug) {
+      res.status(400).json({ error: "slug query param is required" });
+      return;
+    }
+    const org = await queryOne<OrgRow>(`SELECT id FROM platform.orgs WHERE slug = $1`, [slug]);
+    if (!org) {
+      res.status(404).json({ error: "org not found" });
+      return;
+    }
+    const rows = await query(
+      `SELECT domain, status, last_error, created_at, updated_at FROM platform.domains WHERE org_id = $1 ORDER BY created_at DESC`,
+      [org.id]
+    );
+    res.json({ data: rows, error: null });
+  })
+);
+
 domainsRouter.get(
   "/api/domains/:domain/status",
   ah(async (req, res) => {

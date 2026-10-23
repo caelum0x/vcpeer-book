@@ -16,8 +16,9 @@ book.vcpeer.com {
     # Platform service: marketing site root, pricing, signup wizard,
     # analytics dashboard, embeddable widget, webhooks, and the public API.
     @platform path / /pricing /pricing.html /signup /signup/* /dashboard /dashboard/* \
+        /settings /settings/* /assets/* \
         /widget.js /widget.css /widget/* /api/track /api/analytics/* /api/onboarding/* \
-        /api/billing/* /api/domains/* /api/admin/* /api/settings/* /v1/* \
+        /api/billing/* /api/domains /api/domains/* /api/admin/* /api/settings/* /v1/* \
         /webhooks/calcom /webhooks/dodo /webhooks/vcpeer-join /healthz
     handle @platform {
         reverse_proxy 127.0.0.1:4100

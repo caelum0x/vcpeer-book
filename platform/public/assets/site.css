@@ -131,3 +131,58 @@ a:hover { text-decoration: underline; }
 table.funnel { width: 100%; border-collapse: collapse; margin-top: 16px; }
 table.funnel th, table.funnel td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 14px; }
 table.funnel th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }
+
+/* Settings */
+.settings { max-width: 720px; margin: 0 auto; padding: 32px 24px 80px; }
+.settings h1 { font-size: 24px; margin-bottom: 4px; }
+.settings__slug { color: var(--muted); font-size: 14px; margin-bottom: 32px; }
+.panel {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 20px;
+}
+.panel h2 { font-size: 16px; margin: 0 0 4px; }
+.panel__hint { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
+.badge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 10px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.badge--active, .badge--live { background: #e6f4ea; color: #1e7e34; }
+.badge--pending, .badge--dns_created, .badge--propagated, .badge--provisioning { background: #fff4e0; color: #a9680a; }
+.badge--none, .badge--cancelled, .badge--abandoned, .badge--failed, .badge--past_due { background: #fdecea; color: #c0392b; }
+.domain-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+.domain-row:last-child { border-bottom: none; }
+.domain-row__name { font-weight: 600; }
+.radio-row { display: flex; gap: 20px; margin-bottom: 16px; font-size: 14px; }
+.radio-row label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: 500; }
+.upgrade-cta {
+  background: #fff4e0;
+  border: 1px solid #f3d9ab;
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 20px;
+  font-size: 14px;
+}
+.logo-preview {
+  max-height: 48px;
+  max-width: 180px;
+  display: block;
+  margin: 10px 0 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px;
+}
+.success { color: #1e7e34; font-size: 14px; margin-top: 10px; }

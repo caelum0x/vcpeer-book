@@ -77,6 +77,22 @@ app.get("/pricing", (_req, res) => {
 });
 app.use(express.static(path.join(__dirname, "..", "public", "landing")));
 app.use("/dashboard", express.static(path.join(__dirname, "..", "public", "dashboard")));
+// A real page, not a static mount: the page reads its own org slug out of
+// the URL (/settings/:slug) client-side, so every slug needs to resolve to
+// the same index.html rather than requiring a file per tenant.
+app.get("/settings/:slug", (_req, res) => {
+  res.sendFile(path.join(__dirname, "..", "public", "settings", "index.html"));
+});
+// Fixed 2026-10-24: every platform page (landing, pricing, signup wizard,
+// dashboard) links to `/assets/site.css`, but this mount never existed —
+// confirmed live in production that the request fell through Caddy's own
+// catch-all straight to the calcom container, which served its own
+// Next.js 404 page instead of the stylesheet. Every one of those pages
+// has been rendering completely unstyled since the platform service went
+// live. widget.js/widget.css were unaffected (routes/widget.ts serves
+// those two files explicitly via sendFile), which is why this didn't show
+// up in the earlier verification pass.
+app.use("/assets", express.static(path.join(__dirname, "..", "public", "assets")));
 
 app.get("/healthz", (_req, res) => res.json({ ok: true }));
 

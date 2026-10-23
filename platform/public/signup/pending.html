@@ -16,13 +16,18 @@
   <div id="ready" hidden>
     <p class="wizard__sub">You're live. Your booking link:</p>
     <a id="bookingLink" href="#"></a>
+    <p class="wizard__sub" style="margin-top:16px">
+      <a id="settingsLink" href="#">Manage custom domain &amp; branding &rarr;</a>
+    </p>
   </div>
 </main>
 <script>
   var signupUrl = sessionStorage.getItem("vcb_signup_url");
   var statusUrl = sessionStorage.getItem("vcb_status_url");
+  var slug = sessionStorage.getItem("vcb_slug");
   var finish = document.getElementById("finish");
   if (signupUrl) finish.href = signupUrl;
+  if (slug) document.getElementById("settingsLink").href = "/settings/" + slug;
 
   function poll() {
     if (!statusUrl) return;

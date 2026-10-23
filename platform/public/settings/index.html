@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Settings — VCPeer Book</title>
+<link rel="stylesheet" href="/assets/site.css" />
+</head>
+<body>
+<main class="settings">
+  <h1>Workspace settings</h1>
+  <p class="settings__slug" id="slugLine">Loading&hellip;</p>
+
+  <div id="upgradeCta" class="upgrade-cta" hidden>
+    Custom domains and white-label branding are a Pro feature.
+    <a href="#" id="upgradeLink">Upgrade now &rarr;</a>
+  </div>
+
+  <section class="panel" id="billingPanel">
+    <h2>Plan</h2>
+    <p class="panel__hint">Your current plan and subscription status.</p>
+    <p>
+      Plan: <strong id="planLabel">&mdash;</strong>
+      &nbsp; Subscription: <span class="badge" id="subStatusBadge">&mdash;</span>
+    </p>
+  </section>
+
+  <section class="panel" id="domainPanel">
+    <h2>Custom domain</h2>
+    <p class="panel__hint">
+      Point your own domain at your booking page, or claim a free subdomain under
+      book.vcpeer.com.
+    </p>
+    <div id="domainList"></div>
+
+    <form id="domainForm">
+      <div class="radio-row">
+        <label><input type="radio" name="mode" value="subdomain" checked /> Free subdomain</label>
+        <label><input type="radio" name="mode" value="external" /> My own domain</label>
+      </div>
+      <label class="field" id="externalDomainField" hidden>
+        <span>Domain</span>
+        <input type="text" id="externalDomainInput" placeholder="meetings.yourcompany.com" />
+      </label>
+      <button type="submit" class="btn btn--primary" id="provisionBtn">Add domain</button>
+    </form>
+    <p class="error" id="domainError" hidden></p>
+    <p class="success" id="domainSuccess" hidden></p>
+  </section>
+
+  <section class="panel" id="logoPanel">
+    <h2>White-label logo</h2>
+    <p class="panel__hint">
+      Paste a hosted image URL (PNG/SVG, transparent background recommended). Replaces the
+      VCPeer Book mark on your public booking pages.
+    </p>
+    <img id="logoPreview" class="logo-preview" src="" alt="Logo preview" hidden />
+    <form id="logoForm">
+      <label class="field">
+        <span>Logo URL</span>
+        <input type="url" id="logoUrlInput" placeholder="https://yourcompany.com/logo.png" />
+      </label>
+      <button type="submit" class="btn btn--primary">Save logo</button>
+    </form>
+    <p class="error" id="logoError" hidden></p>
+    <p class="success" id="logoSuccess" hidden></p>
+  </section>
+</main>
+
+<script>
+(function () {
+  var slug = window.location.pathname.split("/").filter(Boolean)[1] || "";
+  document.getElementById("slugLine").textContent = slug ? "book.vcpeer.com/" + slug : "";
+
+  var featureFlags = null;
+
+  function badge(el, value) {
+    el.textContent = value || "none";
+    el.className = "badge badge--" + (value || "none");
+  }
+
+  function loadBilling() {
+    return fetch("/api/billing/status/" + encodeURIComponent(slug))
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.error) throw new Error(res.error);
+        var org = res.data.org;
+        featureFlags = res.data.featureFlags || {};
+        document.getElementById("planLabel").textContent = org.plan;
+        badge(document.getElementById("subStatusBadge"), featureFlags.subscription_status);
+
+        if (!featureFlags.custom_domain_enabled) {
+          var cta = document.getElementById("upgradeCta");
+          cta.hidden = false;
+          document.getElementById("upgradeLink").addEventListener("click", function (e) {
+            e.preventDefault();
+            fetch("/api/billing/checkout", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ slug: slug }),
+            })
+              .then(function (r) { return r.json(); })
+              .then(function (res) {
+                if (res.error) { alert(res.error); return; }
+                window.location.href = res.data.checkoutUrl;
+              })
+              .catch(function (err) { alert(err.message); });
+          });
+          document.getElementById("provisionBtn").disabled = true;
+        }
+
+        if (featureFlags.logo_url) {
+          var preview = document.getElementById("logoPreview");
+          preview.src = featureFlags.logo_url;
+          preview.hidden = false;
+          document.getElementById("logoUrlInput").value = featureFlags.logo_url;
+        }
+      });
+  }
+
+  function loadDomains() {
+    return fetch("/api/domains?slug=" + encodeURIComponent(slug))
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.error) throw new Error(res.error);
+        var list = document.getElementById("domainList");
+        if (!res.data.length) {
+          list.innerHTML = '<p class="panel__hint">No domains yet.</p>';
+          return;
+        }
+        list.innerHTML = "";
+        res.data.forEach(function (d) {
+          var row = document.createElement("div");
+          row.className = "domain-row";
+          row.innerHTML =
+            '<span class="domain-row__name">' + d.domain + "</span>" +
+            '<span class="badge badge--' + d.status + '">' + d.status + "</span>";
+          list.appendChild(row);
+        });
+      });
+  }
+
+  document.querySelectorAll('input[name="mode"]').forEach(function (radio) {
+    radio.addEventListener("change", function () {
+      document.getElementById("externalDomainField").hidden =
+        document.querySelector('input[name="mode"]:checked').value !== "external";
+    });
+  });
+
+  document.getElementById("domainForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var errEl = document.getElementById("domainError");
+    var okEl = document.getElementById("domainSuccess");
+    errEl.hidden = true;
+    okEl.hidden = true;
+    var mode = document.querySelector('input[name="mode"]:checked').value;
+    var domain = mode === "external" ? document.getElementById("externalDomainInput").value.trim() : undefined;
+    fetch("/api/domains/provision", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ slug: slug, mode: mode, domain: domain }),
+    })
+      .then(function (r) { return r.json().then(function (body) { return { status: r.status, body: body }; }); })
+      .then(function (res) {
+        if (res.body.error) { errEl.textContent = res.body.error; errEl.hidden = false; return; }
+        okEl.textContent = "Added " + res.body.data.domain + " (" + res.body.data.status + "). It will go live automatically once DNS resolves — this page polls below.";
+        okEl.hidden = false;
+        loadDomains();
+      })
+      .catch(function (err) { errEl.textContent = err.message; errEl.hidden = false; });
+  });
+
+  document.getElementById("logoForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var errEl = document.getElementById("logoError");
+    var okEl = document.getElementById("logoSuccess");
+    errEl.hidden = true;
+    okEl.hidden = true;
+    var logoUrl = document.getElementById("logoUrlInput").value.trim();
+    if (!logoUrl) { errEl.textContent = "Enter a logo URL first."; errEl.hidden = false; return; }
+    fetch("/api/settings/" + encodeURIComponent(slug), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ logoUrl: logoUrl }),
+    })
+      .then(function (r) { return r.json().then(function (body) { return { status: r.status, body: body }; }); })
+      .then(function (res) {
+        if (res.body.error) { errEl.textContent = res.body.error; errEl.hidden = false; return; }
+        okEl.textContent = "Saved.";
+        okEl.hidden = false;
+        var preview = document.getElementById("logoPreview");
+        preview.src = logoUrl;
+        preview.hidden = false;
+      })
+      .catch(function (err) { errEl.textContent = err.message; errEl.hidden = false; });
+  });
+
+  loadBilling().then(loadDomains).catch(function (err) {
+    document.getElementById("slugLine").textContent = "Could not load settings: " + err.message;
+  });
+
+  setInterval(function () { loadDomains().catch(function () {}); }, 15000);
+})();
+</script>
+</body>
+</html>
