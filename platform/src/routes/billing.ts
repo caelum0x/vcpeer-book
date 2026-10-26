@@ -1,6 +1,6 @@
 import { Router, raw } from "express";
 import { query, queryOne } from "../db";
-import { createCustomDomainCheckout, isDodoConfigured, unwrapWebhook } from "../lib/dodo";
+import { unwrapWebhook } from "../lib/dodo";
 import { ah } from "../lib/asyncHandler";
 
 // Paid-tier billing (item 3): per-org feature-flag table + Dodo Payments
@@ -33,6 +33,12 @@ billingRouter.get("/api/billing/status/:slug", ah(async (req, res) => {
   res.json({ data: { org, featureFlags: flags }, error: null });
 }));
 
+// VCPeer Book is free for everyone (owner decision 2026-10-27: VCPeer is
+// off the paid server, no more billing). Custom domain + white-label used
+// to be a paid upgrade behind this checkout; it's now on by default for
+// every org (see migrations.sql + routes/domains.ts), so there is nothing
+// left to buy. Route kept (not deleted) so old clients/bookmarks get a
+// clear, honest response instead of a 404.
 billingRouter.post("/api/billing/checkout", ah(async (req, res) => {
   const { slug } = req.body || {};
   const org = await queryOne<OrgRow>(`SELECT id, slug, email, plan FROM platform.orgs WHERE slug = $1`, [slug]);
@@ -40,23 +46,7 @@ billingRouter.post("/api/billing/checkout", ah(async (req, res) => {
     res.status(404).json({ error: "org not found" });
     return;
   }
-  if (!isDodoConfigured()) {
-    res.status(503).json({
-      error:
-        "Billing is not live yet — owner step: create a 'VCPeer Book — Custom Domain' recurring product in the Dodo Payments dashboard, then set DODO_PAYMENTS_API_KEY and DODO_PRODUCT_ID_CUSTOM_DOMAIN.",
-    });
-    return;
-  }
-  try {
-    const { checkoutUrl } = await createCustomDomainCheckout({
-      orgSlug: org.slug,
-      email: org.email,
-      returnUrl: `${process.env.PLATFORM_BASE_URL || "https://book.vcpeer.com"}/settings/${org.slug}?checkout=complete`,
-    });
-    res.json({ data: { checkoutUrl }, error: null });
-  } catch (err: any) {
-    res.status(502).json({ error: err.message });
-  }
+  res.status(409).json({ error: "VCPeer Book is free - custom domain and white-label are already included, no upgrade needed." });
 }));
 
 dodoWebhookRouter.post("/webhooks/dodo", raw({ type: "application/json" }), async (req, res) => {
@@ -119,20 +109,15 @@ async function handleDodoEvent(event: any): Promise<void> {
   }
 }
 
-// Admin settings: custom domain + logo, gated on custom_domain_enabled.
+// Admin settings: custom domain + logo. Free for every org (see
+// VCPeer-is-free note on the checkout route above) - no longer gated on
+// custom_domain_enabled.
 billingRouter.post(
   "/api/settings/:slug",
   ah(async (req, res) => {
     const org = await queryOne<OrgRow>(`SELECT id FROM platform.orgs WHERE slug = $1`, [req.params.slug]);
     if (!org) {
       res.status(404).json({ error: "org not found" });
-      return;
-    }
-    const flags = await queryOne<{ custom_domain_enabled: boolean }>(`SELECT custom_domain_enabled FROM platform.feature_flags WHERE org_id = $1`, [
-      org.id,
-    ]);
-    if (!flags?.custom_domain_enabled) {
-      res.status(403).json({ error: "Custom domain + white-label is a paid feature — upgrade via /api/billing/checkout first" });
       return;
     }
     const { logoUrl } = req.body || {};

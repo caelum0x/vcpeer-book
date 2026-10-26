@@ -26,11 +26,14 @@ CREATE TABLE IF NOT EXISTS platform.orgs (
   activated_at     TIMESTAMPTZ
 );
 
--- Per-org feature flags / billing state (item 3: paid tier).
+-- Per-org feature flags (owner decision 2026-10-27: VCPeer is free for
+-- everyone, no more billing - custom domain + white-label now default on
+-- for every org; routes/domains.ts and routes/billing.ts no longer read
+-- these two columns to gate anything, they're kept only as a record).
 CREATE TABLE IF NOT EXISTS platform.feature_flags (
   org_id                  BIGINT PRIMARY KEY REFERENCES platform.orgs(id) ON DELETE CASCADE,
-  custom_domain_enabled   BOOLEAN NOT NULL DEFAULT false,
-  white_label_enabled     BOOLEAN NOT NULL DEFAULT false,
+  custom_domain_enabled   BOOLEAN NOT NULL DEFAULT true,
+  white_label_enabled     BOOLEAN NOT NULL DEFAULT true,
   dodo_customer_id        TEXT,
   dodo_subscription_id    TEXT,
   subscription_status     TEXT NOT NULL DEFAULT 'none'

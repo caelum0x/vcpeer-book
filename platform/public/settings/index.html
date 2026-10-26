@@ -11,18 +11,9 @@
   <h1>Workspace settings</h1>
   <p class="settings__slug" id="slugLine">Loading&hellip;</p>
 
-  <div id="upgradeCta" class="upgrade-cta" hidden>
-    Custom domains and white-label branding are a Pro feature.
-    <a href="#" id="upgradeLink">Upgrade now &rarr;</a>
-  </div>
-
   <section class="panel" id="billingPanel">
     <h2>Plan</h2>
-    <p class="panel__hint">Your current plan and subscription status.</p>
-    <p>
-      Plan: <strong id="planLabel">&mdash;</strong>
-      &nbsp; Subscription: <span class="badge" id="subStatusBadge">&mdash;</span>
-    </p>
+    <p class="panel__hint">VCPeer Book is free - every feature on this page is already included.</p>
   </section>
 
   <section class="panel" id="domainPanel">
@@ -84,30 +75,11 @@
       .then(function (r) { return r.json(); })
       .then(function (res) {
         if (res.error) throw new Error(res.error);
-        var org = res.data.org;
+        // VCPeer Book is free for everyone (owner decision 2026-10-27) -
+        // custom domain + white-label are no longer gated on
+        // featureFlags.custom_domain_enabled, so this page no longer shows
+        // an upgrade CTA or disables the domain form.
         featureFlags = res.data.featureFlags || {};
-        document.getElementById("planLabel").textContent = org.plan;
-        badge(document.getElementById("subStatusBadge"), featureFlags.subscription_status);
-
-        if (!featureFlags.custom_domain_enabled) {
-          var cta = document.getElementById("upgradeCta");
-          cta.hidden = false;
-          document.getElementById("upgradeLink").addEventListener("click", function (e) {
-            e.preventDefault();
-            fetch("/api/billing/checkout", {
-              method: "POST",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify({ slug: slug }),
-            })
-              .then(function (r) { return r.json(); })
-              .then(function (res) {
-                if (res.error) { alert(res.error); return; }
-                window.location.href = res.data.checkoutUrl;
-              })
-              .catch(function (err) { alert(err.message); });
-          });
-          document.getElementById("provisionBtn").disabled = true;
-        }
 
         if (featureFlags.logo_url) {
           var preview = document.getElementById("logoPreview");

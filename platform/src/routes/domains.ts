@@ -30,9 +30,6 @@ const RELOAD_SENTINEL_PATH = path.join(CADDY_SNIPPET_DIR, ".reload-requested");
 interface OrgRow {
   id: number;
 }
-interface FlagsRow {
-  custom_domain_enabled: boolean;
-}
 
 domainsRouter.post("/api/domains/provision", ah(async (req, res) => {
   const { slug, domain, mode } = req.body || {}; // mode: 'subdomain' (default) | 'external'
@@ -41,11 +38,11 @@ domainsRouter.post("/api/domains/provision", ah(async (req, res) => {
     res.status(404).json({ error: "org not found" });
     return;
   }
-  const flags = await queryOne<FlagsRow>(`SELECT custom_domain_enabled FROM platform.feature_flags WHERE org_id = $1`, [org.id]);
-  if (!flags?.custom_domain_enabled) {
-    res.status(403).json({ error: "Custom domain is a paid feature — upgrade via /api/billing/checkout first" });
-    return;
-  }
+  // VCPeer Book is free for everyone (owner decision 2026-10-27: VCPeer is
+  // off the paid server, no more billing) — custom domain + white-label used
+  // to be gated on platform.feature_flags.custom_domain_enabled; that column
+  // now defaults to true for every org (see migrations.sql) and this route
+  // no longer checks it, so there is nothing left to upgrade for.
 
   const requestedMode = mode === "external" ? "external" : "subdomain";
   const targetDomain = requestedMode === "subdomain" ? `${slug}.${process.env.VCPEER_BOOK_ROOT_DOMAIN || "book.vcpeer.com"}` : domain;
