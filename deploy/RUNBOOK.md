@@ -20,6 +20,37 @@ the original write-up of the procedure (kept for historical accuracy and as
 the reference for re-deploys/upgrades) — read the "Known follow-ups" section
 at the bottom for what is still genuinely outstanding.
 
+**Outage found + fixed 2026-10-26:** `book.vcpeer.com` (both the Cal.com leg
+on `:3000` and the platform marketing/signup/billing leg on `:4100`, per the
+Caddy site's two-upstream split) was returning a flat 502 for every real
+visitor — `docker ps -a` on `box` showed **zero** `vcpeer-book-*` containers
+running or even stopped; they had been fully removed at some point after the
+2026-10-23 platform-service redeploy and never recreated. Root cause:
+`docker-compose.yml` has several `${VAR:?...}` required-variable
+interpolations (`POSTGRES_PASSWORD`, `CRON_API_KEY`) that Compose resolves
+at **compose-file-parse time** from its own `.env` auto-load (none existed in
+`/opt/infra-box/stacks/vcpeer-book/`) or an explicit `--env-file` flag — the
+`env_file:` directive used throughout this file only injects vars into the
+*container's* runtime environment, it does **not** feed Compose's own
+variable substitution. Every bare `docker compose up -d` (exactly what
+sections 1/2 below and most of section 8 document) therefore hard-failed
+before creating anything, with no retry/alert, so the stack silently stayed
+down. Fixed two ways: (1) brought the stack up for real with
+`docker compose --env-file /etc/products/vcpeer-book.env up -d` — all four
+services (`postgres`, `calcom`, `platform`, `calcom-cron`) are now
+`Up`/`healthy`, verified live via `curl` (`/` 200, `/admin/30min` 200,
+`/pricing` 200, `/healthz` → `{"ok":true}`); (2) closed the root cause so it
+can't silently recur: `sudo ln -s /etc/products/vcpeer-book.env
+/opt/infra-box/stacks/vcpeer-book/.env` — Compose auto-loads a `.env` in the
+project directory for substitution purposes regardless of which command or
+flag is used, so a plain `docker compose up -d` (or a future cron/redeploy
+script that forgets `--env-file`) now resolves the same way. Every
+`docker compose` invocation below keeps the explicit `--env-file` flag too
+(harmless and self-documenting now that it's redundant with the symlink),
+and every `docker-compose` (hyphenated v1 binary) reference below is stale —
+`box` only has the v2 `docker compose` plugin installed, not the standalone
+binary; read `docker-compose` in this file as `docker compose`.
+
 Stack: Cal.com community edition (**cal.diy**, MIT, `github.com/calcom/cal.diy`
 — `calcom/cal.com` now redirects there) + Postgres, branded for VCPeer, with
 every booking getting its own unique VCPeer video room link
